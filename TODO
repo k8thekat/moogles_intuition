@@ -1,4 +1,5 @@
 # Scope:
+- Build class/function to get/handle CSV data on creation and build all JSON files similar to local.py
 - *DONE* Full Item lookup by ID or Name: 
     - *DONE* Supports partial string matching via Fuzz. 
     - *DONE* Recipe Info

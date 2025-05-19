@@ -1,0 +1,7 @@
+*local_data*
+*.vscode
+*.venv
+**pycache**
+*.sqlite
+*__pycache*
+*local.py

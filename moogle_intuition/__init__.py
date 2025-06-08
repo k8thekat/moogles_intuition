@@ -25,13 +25,14 @@ from __future__ import annotations
 __title__ = "Moogle's Intuition"
 __author__ = "k8thekat"
 __license__ = "GNU"
-__version__ = "0.0.1"
-__credits__ = "Universalis, GarlandTools, Square Enix"
+__version__ = "1.0.0"
+__credits__ = "Universalis, GarlandTools and Square Enix"
 
 from typing import Literal, NamedTuple
-from . import _enums as enums
-from . import modules as modules
-from . import _types as types
+from .modules import *
+from ._enums import *
+from .universalis import *
+# from .garland_tools import *
 
 
 class VersionInfo(NamedTuple):
@@ -41,6 +42,6 @@ class VersionInfo(NamedTuple):
     releaseLevel: Literal["alpha", "beta", "pre-release", "release", "development"]
 
 
-version_info: VersionInfo = VersionInfo(Major=0, Minor=0, Revision=1, releaseLevel="development")
+version_info: VersionInfo = VersionInfo(Major=1, Minor=0, Revision=0, releaseLevel="development")
 
 del NamedTuple, Literal, VersionInfo

@@ -24,11 +24,11 @@ from ._enums import (
     WorldEnum,
 )
 from ._types import (
+    CurrentKeysTyped,
     GarlandToolsAPI_FishingLocationsTyped,
     GarlandToolsAPI_ItemKeysTyped,
     GarlandToolsAPI_MobTyped,
     GarlandToolsAPI_NPCTyped,
-    UniversalisAPI_CurrentKeysTyped,
 )
 
 if TYPE_CHECKING:
@@ -37,6 +37,8 @@ if TYPE_CHECKING:
     from requests_cache import CachedResponse, OriginalResponse
 
     from ._types import (
+        CurrentKeysTyped,
+        CurrentTyped,
         FFXIVUserDBTyped,
         FFXIVWatchListDBTyped,
         GarlandToolsAPI_FishingLocationsTyped,
@@ -52,16 +54,12 @@ if TYPE_CHECKING:
         GarlandToolsAPI_ItemTyped,
         GarlandToolsAPI_MobTyped,
         GarlandToolsAPI_NPCTyped,
+        HistoryTyped,
         ItemIDFieldsTyped,
         LocationIDsTyped,
-        UniversalisAPI_CurrentKeysTyped,
-        UniversalisAPI_CurrentTyped,
-        UniversalisAPI_HistoryTyped,
     )
 
-ModulesDataTableAlias = Union[
-    "FFXIVWorldDCGroup", "FFXIVWorld", "AllagonToolsInventory", "FFXIVItem"
-]
+ModulesDataTableAlias = Union["FFXIVWorldDCGroup", "FFXIVWorld", "AllagonToolsInventory", "FFXIVItem"]
 
 
 class AllagonToolsInventory:
@@ -232,9 +230,7 @@ class FFXIVItem:
     desyntheFrom: list[int]
     desynthedTo: list[int]
     alla: dict[str, list[str]]
-    supply: dict[
-        str, int
-    ]  # The Grand Company Supply Mission. Keys: count: int, xp: int, seals: int
+    supply: dict[str, int]  # The Grand Company Supply Mission. Keys: count: int, xp: int, seals: int
     drops: list[int]
     craft: list[GarlandToolsAPI_ItemCraftTyped]
     ventures: list[int]
@@ -257,8 +253,8 @@ class FFXIVItem:
     ff14angler_url: str
 
     # Universalis API Attributes, these will be tied to __market_cached__.
-    universalis_current: UniversalisAPI_CurrentTyped
-    universalis_history: UniversalisAPI_HistoryTyped
+    universalis_current: CurrentTyped
+    universalis_history: HistoryTyped
 
     # Misc
     garland_link: str
@@ -515,9 +511,7 @@ class FFXIVItem:
         # print("CRAFTS", self.craft)
         for craftor in self.craft:
             ingredients: list[str] = []
-            temp_ingredients: list[GarlandToolsAPI_ItemCraftIngredientsTyped] = craftor.get(
-                "ingredients", []
-            )
+            temp_ingredients: list[GarlandToolsAPI_ItemCraftIngredientsTyped] = craftor.get("ingredients", [])
             # print("TEMP INGREDIENTS", temp_ingredients)
             if len(temp_ingredients) == 0:
                 continue
@@ -598,9 +592,7 @@ class FFXIVItem:
                 if data is None:
                     continue
                 temp.append(f"*{data.get('n')}")
-                spot_bait: list[Any] = [
-                    self._garland_api.item(item_id=i) for i in spots[0].get("baits", [])
-                ]
+                spot_bait: list[Any] = [self._garland_api.item(item_id=i) for i in spots[0].get("baits", [])]
                 temp.append(f"{spots[0].get('baits', 'None')}")
             # Here we would generate a list of links with the [Fishing Spot Name](GarlandTools.org) | Location
         pass
@@ -647,7 +639,7 @@ class FFXIVItem:
         return data
 
     # May get ALL of this information during this function call.
-    def set_marketboard_current(self, data: UniversalisAPI_CurrentTyped) -> FFXIVItem:
+    def set_marketboard_current(self, data: CurrentTyped) -> FFXIVItem:
         """
         Set the FFXIV Items marketboard data from Universalis API.
 
@@ -660,15 +652,13 @@ class FFXIVItem:
         self.__market__ = True
         return self
 
-    def set_marketboard_history(self, data: UniversalisAPI_HistoryTyped) -> FFXIVItem:
+    def set_marketboard_history(self, data: HistoryTyped) -> FFXIVItem:
         setattr(self, "universalis_history", data)
         self.__market__ = True
         return self
 
     def get_market_listing_by_world(self, world_id: int) -> Any:
-        cur_listings: list[UniversalisAPI_CurrentKeysTyped] = self.universalis_current.get(
-            "listings", []
-        )
+        cur_listings: list[CurrentKeysTyped] = self.universalis_current.get("listings", [])
         for entry in cur_listings:
             if entry.get("worldID", "") == world_id:
                 pass
@@ -903,15 +893,11 @@ class FFXIVResource:
 
     @classmethod
     def get_universalis_icon(cls) -> discord.File:
-        return discord.File(
-            fp=cls.resource_path.joinpath("universalis-icon.png"), filename="uni-icon.png"
-        )
+        return discord.File(fp=cls.resource_path.joinpath("universalis-icon.png"), filename="uni-icon.png")
 
     @classmethod
     def get_garlandtools_icon(cls) -> discord.File:
-        return discord.File(
-            fp=cls.resource_path.joinpath("garlandtools-icon.png"), filename="gt-icon.png"
-        )
+        return discord.File(fp=cls.resource_path.joinpath("garlandtools-icon.png"), filename="gt-icon.png")
 
     @classmethod
     def get_aethernet_icon(cls) -> discord.File:
@@ -979,15 +965,23 @@ class FFXIVResource:
         self.garland_api: GarlandAPIWrapper = garland_api
 
         # XIV Datamining Github URLS
-        self.xiv_data_item_url = "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/Item.csv"
+        self.xiv_data_item_url = (
+            "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/Item.csv"
+        )
         self.xiv_data_recipe_level_url = "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/RecipeLevelTable.csv"
         self.xiv_data_gathering_url = "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/GatheringItem.csv"
-        self.xiv_data_recipe_url = "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/Recipe.csv"
+        self.xiv_data_recipe_url = (
+            "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/Recipe.csv"
+        )
 
         # Useful Teamcraft URLs for information.
         self.item_url = "https://raw.githubusercontent.com/ffxiv-teamcraft/ffxiv-teamcraft/master/libs/data/src/lib/json/items.json"
-        self.location_url = "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/PlaceName.csv"
-        self.world_url = "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/World.csv"
+        self.location_url = (
+            "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/PlaceName.csv"
+        )
+        self.world_url = (
+            "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/World.csv"
+        )
         self.datacenter_url = "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/WorldDCGroupType.csv"
 
     # todo - Set this up to use a local file first along with downloading it, otherwise use the web url to get a new one.
@@ -1114,9 +1108,7 @@ class FFXIVResource:
         return matches[:limit_results]
 
     # todo - Finish the logic for this.
-    def fishing_spot_id_to_location_name(
-        self, spot_id: int
-    ) -> GarlandToolsAPI_FishingLocationsTyped | None:
+    def fishing_spot_id_to_location_name(self, spot_id: int) -> GarlandToolsAPI_FishingLocationsTyped | None:
         # If we already have our Fishing Spots set, let's query.
         if self.fishing_spots is not None:
             for spot in self.fishing_spots:
@@ -1134,9 +1126,7 @@ class FFXIVResource:
 
             # If for some reason the data is unreadable or the key isn't there.. etc etc.
             if data is None:
-                self.logger.error(
-                    "Failed to load our local fishing locations from path: %s", path.as_posix()
-                )
+                self.logger.error("Failed to load our local fishing locations from path: %s", path.as_posix())
             else:
                 setattr(self, "fishing_spots", list(data.get("browse", [])))
                 return self.fishing(spot_id=spot_id)
@@ -1163,9 +1153,7 @@ class FFXIVResource:
 
         # Clearly we don't have the location info set.
         data: list[LocationIDsTyped] = []
-        path: Path = Path(__file__).parent.joinpath(
-            "extensions/universalis_data/data/PlaceName.csv"
-        )
+        path: Path = Path(__file__).parent.joinpath("extensions/universalis_data/data/PlaceName.csv")
         if path.exists() and path.is_file():
             with path.open() as f:
                 temp = csv.reader(f)
@@ -1197,17 +1185,13 @@ class GarlandAPIWrapper(GarlandTools):
         self.logger: logging.Logger = logging.getLogger()
         if cache_location.exists() and cache_location.is_file():
             raise FileExistsError("You specified a Path to a File, it must be a directory.")
-        super().__init__(
-            cache_location=cache_location.as_posix(), cache_expire_after=cache_expire_after
-        )
+        super().__init__(cache_location=cache_location.as_posix(), cache_expire_after=cache_expire_after)
 
     # todo - Learn about overloads to predefine type returns
     def icon(
         self, icon_type: GarlandToolsAPIIconTypeEnum, icon_id: int, to_file: bool = True
     ) -> discord.File | BytesIO:
-        res: OriginalResponse | CachedResponse = super().icon(
-            icon_type=icon_type.value, icon_id=icon_id
-        )
+        res: OriginalResponse | CachedResponse = super().icon(icon_type=icon_type.value, icon_id=icon_id)
         if res.status_code == 200:
             if to_file:
                 return discord.File(fp=BytesIO(initial_bytes=res.content), filename="item-icon.png")
@@ -1316,9 +1300,7 @@ class UniversalisAPIWrapper:
         # These are the "Trimmed" API fields for Universalis Market Results.
         self.api_trim_item_fields = "&fields=itemID%2Clistings.quantity%2Clistings.worldName%2Clistings.pricePerUnit%2Clistings.hq%2Clistings.total%2Clistings.tax%2Clistings.retainerName%2Clistings.creatorName%2Clistings.lastReviewTime%2ClastUploadTime"
 
-    async def universalis_call_api(
-        self, url: str
-    ) -> UniversalisAPI_CurrentTyped | UniversalisAPI_HistoryTyped:
+    async def universalis_call_api(self, url: str) -> CurrentTyped | HistoryTyped:
         cur_time: datetime = datetime.now()
         max_diff = timedelta(milliseconds=1000 / self.max_api_calls)
         if (cur_time - self.api_call_time) < max_diff:
@@ -1363,7 +1345,7 @@ class UniversalisAPIWrapper:
             )
 
         self.api_call_time = datetime.now()
-        res: UniversalisAPI_CurrentTyped = await data.json()
+        res: CurrentTyped = await data.json()
         return res
 
     async def get_universalis_current_mb_data(
@@ -1374,7 +1356,7 @@ class UniversalisAPIWrapper:
         num_history_entries: int = 10,
         item_quality: ItemQualityEnum = ItemQualityEnum.NQ,
         trim_item_fields: bool = True,
-    ) -> UniversalisAPI_CurrentTyped:
+    ) -> CurrentTyped:
         print("MARKETBOARD DATA", "DATACENTER", world_or_dc.name, "LEN", len(items), type(items))
 
         if isinstance(items, list):
@@ -1384,7 +1366,7 @@ class UniversalisAPIWrapper:
         if trim_item_fields:
             api_url += self.api_trim_item_fields
 
-        res: UniversalisAPI_CurrentTyped = await self.universalis_call_api(url=api_url)  # type: ignore - I know the response type because of the URL
+        res: CurrentTyped = await self.universalis_call_api(url=api_url)  # type: ignore - I know the response type because of the URL
         return res
 
     # todo - need to finish this command, understand overloads to define return types better
@@ -1396,7 +1378,7 @@ class UniversalisAPIWrapper:
         min_price: int = 0,
         max_price: Union[int, None] = None,
         history: int = 604800000,
-    ) -> UniversalisAPI_CurrentTyped | UniversalisAPI_HistoryTyped:
+    ) -> CurrentTyped | HistoryTyped:
         """
 
         Universalis Marketboard History Data
@@ -1441,7 +1423,5 @@ class UniversalisAPIWrapper:
             items = ",".join(items)
 
         api_url: str = f"{self.base_api_url}/history/{data_center}/{items}?entriesToReturn={num_listings}&statsWithin={history}&minSalePrice={min_price}&maxSalePrice={max_price}"
-        res: (
-            UniversalisAPI_CurrentTyped | UniversalisAPI_HistoryTyped
-        ) = await self.universalis_call_api(url=api_url)
+        res: CurrentTyped | HistoryTyped = await self.universalis_call_api(url=api_url)
         return res

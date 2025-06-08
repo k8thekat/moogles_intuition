@@ -39,7 +39,7 @@ include-package-data = true
 
 [tool.ruff]
 target-version = "py312"
-line-length = 110
+line-length = 140
 
 [tool.ruff.lint]
 exclude = ["docs/extensions/*.py", "logs"]
@@ -73,6 +73,7 @@ ignore = [
     "ANN401",
     "RUF052", # for filtering "local dummy variable is accessed" eg. - vars using `_`
     "RUF002", # The character U+2013 "–" could be confused with the ASCII character U+002d "-", which is more common in source code. 
+    "UP045", # Type var `Optional[X]` vs `X | None`
 ]
 
 [tool.ruff.lint.isort]

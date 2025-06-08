@@ -1,5 +1,10 @@
 # Scope:
-- Build class/function to get/handle CSV data on creation and build all JSON files similar to local.py
+- *DONE* - Handle CSV data on creation and build all JSON files similar to local.py
+    - *DONE* - Build class/function to get or handle the data. (FFXIVHandler)
+    - *DONE*- Function to validate JSON or CSV files if not use `asyncio.create_task()` and go retrieve the data.
+    - *DONE* - Finish dynamic function to fetch CSV data.
+    - *DONE* - Change file names to match URL dict structure for clarity.
+    - *DONE* - Add logic for when `.json` file doesn't exist to get data and rebuild as needed.
 - *DONE* Full Item lookup by ID or Name: 
     - *DONE* Supports partial string matching via Fuzz. 
     - *DONE* Recipe Info
@@ -17,6 +22,7 @@
         - *DONE* Gatherable
     - FF14Angler Integration/Links
         - Links -> https://en.ff14angler.com/
+        - Possibly get Lure to Fish % chance.
     - Garland Tools:
         - Link -> https://www.garlandtools.org/db/#item/5462
         - Info

@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 import csv
 import json
 import logging
-import time
-from asyncio import Task
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Optional, Unpack
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Optional, Unpack, overload
 
 import aiohttp
 from thefuzz import fuzz
@@ -30,11 +27,13 @@ from ._enums import (
     XIVItemUICategoryEnum,
 )
 from .garland_tools import GarlandAPI
-from .universalis import DataCenterEnum, ItemQualityEnum, UniversalisAPI, WorldEnum
+from .universalis import UniversalisAPI
 
 if TYPE_CHECKING:
     from aiohttp import ClientResponse
     from aiohttp.client import _RequestOptions
+
+    from moogle_intuition.universalis import CurrentData
 
     from ._types import (
         ConvertCSVtoJsonParams,
@@ -52,6 +51,7 @@ if TYPE_CHECKING:
         XIVRecipeLookUpTyped,
         XIVRecipeTyped,
     )
+    from .universalis._types import MarketBoardParams
 
 
 __all__ = (
@@ -180,57 +180,35 @@ class FFXIVHandler(UniversalisAPI):
         7: 17837,
         8: 33916,
     }
-    # xiv_data_item_url: ClassVar[str] = "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/Item.csv"
 
     # Recipe Handling.
     # I am storing "Recipe ID" : "Item Result ID"
     # recipe_dict: dict[str, int]
     recipe_json: dict[str, XIVRecipeTyped]
-    # xiv_data_recipe_url: ClassVar[str] = "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/Recipe.csv"
-
     # Job Recipe Table
     recipelookup_json: dict[str, XIVRecipeLookUpTyped]
-    # xiv_data_recipe_lookup_url: ClassVar[str] = (
-    #     "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/RecipeLookup.csv"
-    # )
     # Recipe Level Table
     recipelevel_json: dict[str, XIVRecipeLevelTyped]
-    # xiv_data_recipe_level_url: ClassVar[str] = (
-    #     "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/RecipeLevelTable.csv"
-    # )
-
     # Gatherable Items Handling.
     gatheringitem_dict: dict[str, int]
     gatheringitem_json: dict[str, XIVGatheringItemTyped]
-    # xiv_data_gathering_item_url: ClassVar[str] = (
-    #     "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/GatheringItem.csv"
-    # )
-
     gatheringitemlevel_json: dict[str, XIVGatheringItemLevelTyped]
-    # xiv_data_gathering_item_level_url: ClassVar[str] = (
-    #     "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/GatheringItemLevelConvertTable.csv"
-    # )
-
     # Fishing Related
     fishparameter_json: dict[str, XIVFishParameterTyped]
     # This is stored with FLIPPED key to values ("Item ID" : "Dict Index")
     fishparameter_dict: dict[int, str]
-    # xiv_data_fish_parameter_url: ClassVar[str] = (
-    #     "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/FishParameter.csv"
-    # )
     fishingspot_json: dict[str, XIVFishingSpotTyped]
-    # xiv_data_fishing_spot_url: ClassVar[str] = (
-    #     "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/FishingSpot.csv"
-    # )
-
     # Location Information
     placename_json: dict[str, XIVPlaceNameTyped]
-    # xiv_data_place_name_url = "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/PlaceName.csv"
 
-    def __init__(self, session: Optional[aiohttp.ClientSession] = None) -> None:
+    # Marketboard Integration
+    universalis: UniversalisAPI | None
+
+    def __init__(self, session: Optional[aiohttp.ClientSession] = None, universalis: Optional[UniversalisAPI] = None) -> None:
         global URLS
         self.data_urls: dict[str, tuple[bool, str]] = URLS
         self.session = session
+        self.universalis = universalis
 
     # def __getattribute__(self, name: str) -> Any:
     #     attr = super().__getattribute__(name)
@@ -261,10 +239,6 @@ class FFXIVHandler(UniversalisAPI):
             if f_path.exists() is False:
                 await self.fetch_csv_build_json(url=data[1], file_name=key + ".csv", convert_pound=data[0])
                 self.logger.info("Finished retrieving and building data for file.| File: %s", key)
-
-    # async def build_data(self) -> None:
-    #     for key, value in URLS.items():
-    #         await self.fetch_csv(url=value[1], file_name=f"{key}.csv", convert_pound=value[0])
 
     @classmethod
     async def build_handler(cls, auto_builder: bool = True) -> FFXIVHandler:
@@ -337,7 +311,7 @@ class FFXIVHandler(UniversalisAPI):
     def generate_reference_dict(
         self,
         file_name: str,
-        value_get: str | None = None,
+        value_get: Optional[str] = None,
         flip_key_value: bool = False,
         no_ref_dict: bool = False,
     ) -> None:
@@ -416,10 +390,20 @@ class FFXIVHandler(UniversalisAPI):
             self.data_path.joinpath(file_name),
         )
 
+    # @overload
+    # def get_item(self,item_id: int) -> FFXIVItem: ...
+
+    # @overload
+    # def get_item(self, item_id = None, item_name: str) -> list[FFXIVItem] | FFXIVItem: ...
+
+    # @overload
+    # def get_item(self,item_id: Optional[int] = None) -> list[FFXIVItem] | FFXIVItem: ...
+
     def get_item(
         self,
-        item_id: int | None = None,
-        item_name: str | None = None,
+        item_id: Optional[int] = None,
+        item_name: Optional[str] = None,
+        *,
         match: int = 80,
         limit_results: int = 10,
     ) -> FFXIVItem | list[FFXIVItem]:
@@ -462,12 +446,12 @@ class FFXIVHandler(UniversalisAPI):
             self.logger.debug("Searching... Item ID: %s | Search Item Name: %s", item_id, item_name)
 
             # We are storing previously index'd item objects in our quick lookup dictionary.
-            res: str | FFXIVItem | None = self.item_dict.get(str(item_id), None)
+            res: Optional[str | FFXIVItem] = self.item_dict.get(str(item_id), None)
             if isinstance(res, FFXIVItem):
                 return res
             # If we get a string back it's most likely the name we stored as quick ref.
             elif isinstance(res, str):
-                data: XIVItemTyped | None = self.item_json.get(str(item_id), None)
+                data: Optional[XIVItemTyped] = self.item_json.get(str(item_id), None)
 
             # If we fail to get a string or an FFXIVItem back clearly we have an issue.
             if res is None or data is None:
@@ -561,7 +545,7 @@ class FFXIVHandler(UniversalisAPI):
             item_id,
             len(self.recipelookup_json),
         )
-        data: XIVRecipeLookUpTyped | None = self.recipelookup_json.get(str(item_id), None)
+        data: Optional[XIVRecipeLookUpTyped] = self.recipelookup_json.get(str(item_id), None)
         if data is None:
             raise ValueError("We failed to lookup Item ID: %s in our recipelookup.json file", item_id)
         return FFXIVJobRecipe(data=data)
@@ -587,7 +571,7 @@ class FFXIVHandler(UniversalisAPI):
         """
         # I am storing str "Recipe ID" : int "Item Result ID"
         self.logger.debug("Searching... Recipe ID: %s | Entries: %s", recipe_id, len(self.recipe_json))
-        data: XIVRecipeTyped | None = self.recipe_json.get(recipe_id, None)
+        data: Optional[XIVRecipeTyped] = self.recipe_json.get(recipe_id, None)
         if data is None:
             raise ValueError(
                 "We failed to lookup Recipe ID: %s in our recipe.json file. Data is `None`",
@@ -619,7 +603,7 @@ class FFXIVHandler(UniversalisAPI):
             recipe_level_id,
             len(self.recipelevel_json),
         )
-        data: XIVRecipeLevelTyped | None = self.recipelevel_json.get(str(recipe_level_id), None)
+        data: Optional[XIVRecipeLevelTyped] = self.recipelevel_json.get(str(recipe_level_id), None)
         if data is None:
             raise ValueError(
                 "We failed to lookup Recipe Level ID: %s in our recipelevel.json file",
@@ -627,14 +611,31 @@ class FFXIVHandler(UniversalisAPI):
             )
         return FFXIVRecipeLevel(data=data)
 
-    # TODO - docstring
     def get_gathering_level(self, gathering_level_id: int) -> XIVGatheringItemLevelTyped:
+        """
+        Retrieves the JSON data related to the gathering item level, which includes `stars` and `item level` for the `item`.
+
+        Parameters
+        -----------
+        gathering_level_id: :class:`int`
+            The level ID to search for.
+
+        Returns
+        --------
+        :class:`XIVGatheringItemLevelTyped`
+            The JSON data from the `gathering_item_level.json` related to the `gathering_level_id` parameter passed in.
+
+        Raises
+        -------
+        :exc:`ValueError`
+            Failure to find the `gathering_level_id` parameter provided.
+        """
         self.logger.debug(
             "Searching... Gathering Item Level ID: %s | Entries: %s",
             gathering_level_id,
             len(self.gatheringitemlevel_json),
         )
-        data: XIVGatheringItemLevelTyped | None = self.gatheringitemlevel_json.get(str(gathering_level_id), None)
+        data: Optional[XIVGatheringItemLevelTyped] = self.gatheringitemlevel_json.get(str(gathering_level_id), None)
         if data is None:
             raise ValueError(
                 "We failed to lookup Gathering Item Level ID: %s in our gatheringitemlevel.json file",
@@ -642,14 +643,31 @@ class FFXIVHandler(UniversalisAPI):
             )
         return data
 
-    # TODO - docstring
     def get_fishing_spot(self, fishing_spot_id: int) -> FFXIVFishingSpot:
+        """
+        Retrieve any information related to the provided `fishing_spot_id` parameter inside our `fishing_spot.json` file.
+
+        Parameters
+        -----------
+        fishing_spot_id: :class:`int`
+            The ID value for a fishing spot.
+
+        Returns
+        --------
+        :class:`FFXIVFishingSpot`
+            The JSON data related to the `place_id` parameter.
+
+        Raises
+        -------
+        :exc:`ValueError`
+            If the `fishing_spot_id` parameter does not exist in the `fishing_spot.json` file..
+        """
         self.logger.debug(
             "Searching... Fishing Spot ID: %s | Entries: %s",
             fishing_spot_id,
             len(self.fishingspot_json),
         )
-        data: XIVFishingSpotTyped | None = self.fishingspot_json.get(str(fishing_spot_id), None)
+        data: Optional[XIVFishingSpotTyped] = self.fishingspot_json.get(str(fishing_spot_id), None)
         if data is None:
             raise ValueError(
                 "We failed to lookup Fishing Spot ID: %s in our fishingspot.json file",
@@ -657,14 +675,31 @@ class FFXIVHandler(UniversalisAPI):
             )
         return FFXIVFishingSpot(data=data)
 
-    # TODO - docstring
     def get_place_name(self, place_id: int) -> XIVPlaceNameTyped:
+        """
+        Retrieve any information related to the provided `place_id` parameter inside our `place_name.json` file.
+
+        Parameters
+        -----------
+        place_id: :class:`int`
+            The ID value for a place.
+
+        Returns
+        --------
+        :class:`XIVPlaceNameTyped`
+            The JSON data related to the `place_id` parameter.
+
+        Raises
+        -------
+        :exc:`ValueError`
+            If the `place_id` parameter does not exist in the `place_name.json` file.
+        """
         self.logger.debug(
             "Searching... Place Name ID: %s | Entries: %s",
             place_id,
             len(self.placename_json),
         )
-        data: XIVPlaceNameTyped | None = self.placename_json.get(str(place_id), None)
+        data: Optional[XIVPlaceNameTyped] = self.placename_json.get(str(place_id), None)
         if data is None:
             raise ValueError(
                 "We failed to lookup Place Name ID: %s in our placename.json file",
@@ -676,7 +711,7 @@ class FFXIVHandler(UniversalisAPI):
         """
         Check's if an Item ID is gatherable via fishing.
         """
-        key: str | None = self.fishparameter_dict.get(item_id, None)
+        key: Optional[str] = self.fishparameter_dict.get(item_id, None)
         self.logger.debug(
             "Searching... Fishing Parameter for Item ID: %s | Entries: %s ",
             item_id,
@@ -688,7 +723,7 @@ class FFXIVHandler(UniversalisAPI):
                 item_id,
             )
         else:
-            data: XIVFishParameterTyped | None = self.fishparameter_json.get(str(key), None)
+            data: Optional[XIVFishParameterTyped] = self.fishparameter_json.get(str(key), None)
         if data is not None:
             return FFXIVFishParameter(data=data)
         raise ValueError(
@@ -725,7 +760,7 @@ class FFXIVHandler(UniversalisAPI):
         auto_pep8: bool = True,
         convert_pound: bool = True,
         typed_dict: bool = False,
-        typed_file_name: str | None = None,
+        typed_file_name: Optional[str] = None,
     ) -> None:
         """
         Parses our local `xiv_datamining` folder csv files into JSON files.
@@ -1156,185 +1191,52 @@ class FFXIVHandler(UniversalisAPI):
         await self.convert_csv_to_json(csv_name=file_name, **convert_args)
         return True
 
-    # async def item_build(self, url: str = "", file_name: str = "", typed_dict: bool = False) -> None:
-    #     # Item JSON builder section.
-    #     res = await self.get_file_data(url=xiv_data_item_url)
-    #     self.write_to_file(path=self.data_path, file_name="item.csv", data=res)
-    #     await self.data_building(csv_name="item.csv", typed_dict=typed_dict, typed_file_name="ItemTyped.py")
+    async def get_mb_current_data(
+        self, item_names: Optional[list[str]] = None, item_ids: Optional[list[int]] = None, **kwargs: Unpack[MarketBoardParams]
+    ) -> list[CurrentData] | CurrentData | None:
+        """
+        Bulk Universalis Marketboard data fetching.
 
-    # async def recipe_build(self, typed_dict: bool = False) -> None:
-    #     # Recipe builder section.
-    #     res = await self.get_file_data(url=xiv_data_recipe_url)
-    #     self.write_to_file(path=self.data_path, file_name="recipe.csv", data=res)
-    #     await self.data_building(csv_name="recipe.csv", typed_dict=typed_dict, typed_file_name="RecipeTyped.py")
+        Parameters
+        -----------
+        item_names: :class:`Optional[list[str]]`, optional
+            A list of item_names, by default None.
+        item_ids: :class:`Optional[list[int]]`, optional
+            A list of item_ids, by default None.
 
-    # async def job_recipe_build(self, typed_dict: bool = False) -> None:
-    #     res = await self.get_file_data(url=xiv_data_recipe_lookup_url)
-    #     self.write_to_file(path=self.data_path, file_name="recipelookup.csv", data=res)
-    #     await self.data_building(csv_name="recipelookup.csv", typed_dict=typed_dict, typed_file_name="JobRecipeTyped.py")
+        Returns
+        --------
+        :class:`list[CurrentData] | CurrentData | None`
+            The Universalis JSON data represented as a class.
 
-    # async def recipe_level_build(self, typed_dict: bool = False) -> None:
-    #     res = await self.get_file_data(url=xiv_data_recipe_level_url)
-    #     self.write_to_file(path=self.data_path, file_name="recipelevel.csv", data=res)
-    #     await self.data_building(csv_name="recipelevel.csv", typed_dict=typed_dict, typed_file_name="RecipeLevelTyped.py")
+        Raises
+        -------
+        :exc:`ValueError`
+            If you provide parameter `item_names` and `item_ids`, please provide only one.
+        """
+        if item_names is not None and item_ids is not None:
+            raise ValueError("You must provide either parameter `item_names` or `item_ids`.")
 
-    # async def gatherable_build(self, typed_dict: bool = False) -> None:
-    #     res = await self.get_file_data(url=xiv_data_gathering_url)
-    #     self.write_to_file(path=self.data_path, file_name="gatheringitem.csv", data=res)
-    #     # We remove the # key value from this data as it's not used or references something else. Unsure...
-    #     await self.data_building(
-    #         csv_name="gatheringitem.csv",
-    #         convert_pound=False,
-    #         typed_dict=typed_dict,
-    #         typed_file_name="GatheringItemTyped.py",
-    #     )
+        # Just for the first call, let's setup UniversalisAPI
+        if self.universalis is None:
+            universalis = UniversalisAPI(session=self.session)
+            self.universalis = universalis
+        else:
+            universalis: UniversalisAPI = self.universalis
 
-    # async def fish_param_build(self, typed_dict: bool = False) -> None:
-    #     res = await self.get_file_data(url=xiv_data_fish_parameter_url)
-    #     self.write_to_file(path=self.data_path, file_name="fishparameter.csv", data=res)
-    #     # We remove the # key value from this data as it's not used or references something else. Unsure...
-    #     await self.data_building(
-    #         csv_name="fishparameter.csv",
-    #         typed_dict=typed_dict,
-    #         typed_file_name="FishParameterTyped.py",
-    #     )
+        if item_names is not None and isinstance(item_names, list):
+            for name in item_names:
+                # Just in case we fail to find the item.
+                try:
+                    res: FFXIVItem | list[FFXIVItem] = self.get_item(item_name=name, limit_results=1)
+                except ValueError:
+                    return None
 
-    # async def fishing_spot_build(self, typed_dict: bool = False) -> None:
-    #     res = await self.get_file_data(url=xiv_data_fishing_spot_url)
-    #     self.write_to_file(path=self.data_path, file_name="fishingspot.csv", data=res)
-    #     # We remove the # key value from this data as it's not used or references something else. Unsure...
-    #     await self.data_building(
-    #         csv_name="fishingspot.csv",
-    #         typed_dict=typed_dict,
-    #         typed_file_name="FishingSpotTyped.py",
-    #     )
-
-    # async def place_name_build(self, typed_dict: bool = False) -> None:
-    #     res = await self.get_file_data(url=xiv_data_place_name_url)
-    #     self.write_to_file(path=self.data_path, file_name="placename.csv", data=res)
-    #     # We remove the # key value from this data as it's not used or references something else. Unsure...
-    #     await self.data_building(
-    #         csv_name="placename.csv",
-    #         typed_dict=typed_dict,
-    #         typed_file_name="PlaceNameTyped.py",
-    #     )
-
-    # async def gatherable_item_level_build(self, typed_dict: bool = False) -> None:
-    #     res = await self.get_file_data(url=xiv_data_gathering_item_level_url)
-    #     self.write_to_file(path=self.data_path, file_name="gatheringitemlevel.csv", data=res)
-    #     # We remove the # key value from this data as it's not used or references something else. Unsure...
-    #     await self.data_building(
-    #         csv_name="gatheringitemlevel.csv",
-    #         convert_pound=False,
-    #         typed_dict=typed_dict,
-    #         typed_file_name="GatheringItemLevelTyped.py",
-    #     )
-
-    # async def level_item_build(self, typed_dict: bool = False) -> None:
-    #     res = await self.get_file_data(url=xiv_data_item_level_url)
-    #     self.write_to_file(path=self.data_path, file_name="itemlevel.csv", data=res)
-    #     await self.data_building(csv_name="itemlevel.csv", typed_dict=typed_dict, typed_file_name="ItemLevelTyped.py")
-
-    # async def class_job_build(self, typed_dict: bool = False) -> None:
-    #     res = await self.get_file_data(url=xiv_data_class_job_url)
-    #     self.write_to_file(path=self.data_path, file_name="classjob.csv", data=res)
-    #     await self.data_building(csv_name="classjob.csv", typed_dict=typed_dict, typed_file_name="ClassJobTyped.py")
-
-    # async def class_job_category_build(self, typed_dict: bool = False) -> None:
-    #     res = await self.get_file_data(url=xiv_data_class_job_category_url)
-    #     self.write_to_file(path=self.data_path, file_name="classjobcategory.csv", data=res)
-    #     await self.data_building(csv_name="classjobcategory.csv", typed_dict=typed_dict, typed_file_name="ClassJobCategoryTyped.py")
-
-    # async def base_param_build(self, typed_dict: bool = False) -> None:
-    #     res = await self.get_file_data(url=xiv_data_base_params_url)
-    #     self.write_to_file(path=self.data_path, file_name="baseparam.csv", data=res)
-    #     await self.data_building(csv_name="baseparam.csv", typed_dict=typed_dict, typed_file_name="BaseParamTyped.py")
-
-    # async def item_special_bonus_enum_build(self) -> None:
-    #     res = await self.get_file_data(url=xiv_data_item_special_bonus_url)
-    #     self.write_to_file(path=self.data_path, file_name="itemspecialbonus.csv", data=res)
-    #     data = self.csv_parse(path=self.data_path.joinpath("itemspecialbonus.csv"), convert_pound=False)
-    #     keys: list[int] = []
-    #     values: list[str] = []
-    #     if isinstance(data[0], dict):
-    #         for key, value in data[0].items():
-    #             temp = value.get("name", None)
-    #             if temp is None:
-    #                 continue
-    #             temp = self.sanitize_key_name(temp)
-    #             values.append(temp)
-    #             keys.append(key)
-
-    #     enum_str = self.generate_enum(class_name="XIVItemSpecialBonus", keys=keys, values=values)
-    #     self.write_to_file(
-    #         file_name="XIVItemSpecialBonusEnum.py",
-    #         data=enum_str,
-    #     )
-
-    # async def item_repair_resource_enum_build(self) -> None:
-    #     # ? Possible turn this into something more useful; at this time it willbe a hand made map.
-    #     xiv_data_item_repair_resource_url
-    #     res = await item_handler.get_file_data(url=xiv_data_item_repair_resource_url)
-    #     item_handler.write_to_file(path=item_handler.data_path, file_name="itemrepairresources.csv", data=res)
-    #     data = item_handler.csv_parse(path=item_handler.data_path.joinpath("itemrepairresources.csv"), convert_pound=False)
-    #     keys: list[int] = []
-    #     values: list[str] = []
-    #     if isinstance(data[0], dict):
-    #         for key, value in data[0].items():
-    #             temp = value.get("item", None)
-    #             if temp is None:
-    #                 continue
-    #             elif isinstance(temp, str):
-    #                 temp = item_handler.sanitize_key_name(temp)
-
-    #             values.append(temp)
-    #             keys.append(key)
-
-    #     enum_str = item_handler.generate_enum(class_name="XIVItemRepairResourcesEnum", keys=keys, values=values)
-    #     item_handler.write_to_file(
-    #         file_name="XIVItemRepairResourcesEnum.py",
-    #         data=enum_str,
-    #     )
-
-    # async def item_ui_enum_build(self) -> None:
-    #     res = await item_handler.get_file_data(url=xiv_data_item_ui_category_url)
-    #     item_handler.write_to_file(path=item_handler.data_path, file_name="itemuicategory.csv", data=res)
-    #     data = item_handler.csv_parse(path=item_handler.data_path.joinpath("itemuicategory.csv"), convert_pound=False)
-    #     keys: list[int] = []
-    #     values: list[str] = []
-    #     if isinstance(data[0], dict):
-    #         for key, value in data[0].items():
-    #             temp = value.get("name", None)
-    #             if temp is None:
-    #                 continue
-    #             temp = item_handler.sanitize_key_name(temp)
-    #             values.append(temp)
-    #             keys.append(key)
-    #     enum_str = item_handler.generate_enum(class_name="XIVItemUICategoryEnum", keys=keys, values=values)
-    #     item_handler.write_to_file(
-    #         file_name="itemuicategory_enum.py",
-    #         data=enum_str,
-    #     )
-
-    # async def item_series_enum_build(self) -> None:
-    #     res = await item_handler.get_file_data(url=xiv_data_item_ui_category_url)
-    #     item_handler.write_to_file(path=item_handler.data_path, file_name="itemseries.csv", data=res)
-    #     data = item_handler.csv_parse(path=item_handler.data_path.joinpath("itemseries.csv"), convert_pound=False)
-    #     keys: list[int] = []
-    #     values: list[str] = []
-    #     if isinstance(data[0], dict):
-    #         for key, value in data[0].items():
-    #             temp = value.get("name", None)
-    #             if temp is None:
-    #                 continue
-    #             temp = item_handler.sanitize_key_name(temp)
-    #             values.append(temp)
-    #             keys.append(key)
-    #     enum_str = item_handler.generate_enum(class_name="XIVItemSeriesEnum", keys=keys, values=values)
-    #     item_handler.write_to_file(
-    #         file_name="ItemSeriesEnum.py",
-    #         data=enum_str,
-    #     )
+                if isinstance(res, list):
+                    return await universalis.get_current_data(items=[entry.id for entry in res], **kwargs)
+                return await universalis.get_current_data(items=res.id, **kwargs)
+        elif item_ids is not None and isinstance(item_ids, list):
+            return await universalis.get_current_data(items=item_ids, **kwargs)
 
 
 class FFXIVItem(GarlandAPI):
@@ -1439,10 +1341,10 @@ class FFXIVItem(GarlandAPI):
     sub_stat_category: int
     is_glamourous: bool
 
-    def __init__(self, data: XIVItemTyped, session: aiohttp.ClientSession | None = None) -> None:
+    def __init__(self, data: XIVItemTyped, session: Optional[aiohttp.ClientSession] = None) -> None:
         self.logger: logging.Logger = logging.getLogger()
         self._ffxivhandler = FFXIVHandler.get_handler()
-        self.session: aiohttp.ClientSession | None = session
+        self.session: Optional[aiohttp.ClientSession] = session
 
         setattr(self, "_raw", data)
 
@@ -1594,21 +1496,25 @@ class FFXIVItem(GarlandAPI):
         pass
 
     @property
-    def mb_current(self) -> Any:
-        pass
+    def mb_current(self) -> Optional[CurrentData]:
+        try:
+            return self._mb_current
+        except AttributeError:
+            return None
 
     @property
     def mb_history(self) -> Any:
         pass
 
-    async def mb_current_data(
-        self,
-        world_or_dc: DataCenterEnum | WorldEnum = DataCenterEnum.Crystal,
-        num_listings: int = 10,
-        num_history: int = 10,
-        quality: ItemQualityEnum = ItemQualityEnum.NQ,
-    ) -> Any:  # UniversalisAPICurrentData
-        pass
+    async def mb_current_data(self, **kwargs: Unpack[MarketBoardParams]) -> CurrentData:
+        # Just for the first call, let's setup UniversalisAPI
+        if self._ffxivhandler.universalis is None:
+            universalis = UniversalisAPI(session=self.session)
+            self._ffxivhandler.universalis = universalis
+        else:
+            universalis: UniversalisAPI = self._ffxivhandler.universalis
+        self._mb_current: CurrentData = await universalis.get_current_data(items=[self.id], **kwargs)
+        return self._mb_current
 
 
 class FFXIVJobRecipe:

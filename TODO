@@ -5,6 +5,7 @@
     - *DONE* - Finish dynamic function to fetch CSV data.
     - *DONE* - Change file names to match URL dict structure for clarity.
     - *DONE* - Add logic for when `.json` file doesn't exist to get data and rebuild as needed.
+    - Fix functions for building Enums/etc inside FFXIVHandler
 - *DONE* Full Item lookup by ID or Name: 
     - *DONE* Supports partial string matching via Fuzz. 
     - *DONE* Recipe Info
@@ -20,6 +21,14 @@
     - *DONE* How to know if an Item can be Fished or Gathered?
         - *DONE* Fishing
         - *DONE* Gatherable
+    - Marketboard/Universalis Interaction:
+        - *DONE* - FFXIVItem - Fetch current Marketboard Information.
+        - FFXIVHandler - Bulk item fetching of current Marketboard Information.
+        #### Features:
+        - Searching up an Item and see it's cost vs making it.
+        - Searching inventory from Allagon Tools info In-game to see possible crafts.
+            - Sort by least missing ingredients.
+            - Attach Costs to items and or cheapest to "craft".
     - FF14Angler Integration/Links
         - Links -> https://en.ff14angler.com/
         - Possibly get Lure to Fish % chance.
@@ -29,11 +38,5 @@
     - FFXIV Console Games Wiki 
         - Link -> https://ffxiv.consolegameswiki.com/wiki/FF14_Wiki
 
-    - Marketboard/Universalis Interaction:
-        #### Features:
-        - Searching up an Item and see it's cost vs making it.
-        - Searching inventory from Allagon Tools info In-game to see possible crafts.
-            - Sort by least missing ingredients.
-            - Attach Costs to items and or cheapest to "craft".
 
 

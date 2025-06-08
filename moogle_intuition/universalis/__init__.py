@@ -31,7 +31,7 @@ class UniversalisAPI:
     # Universalis API stuff
     base_api_url: str
     api_trim_item_fields: str
-    logger: ClassVar[logging.Logger] = logging.getLogger()
+    logger: ClassVar[logging.Logger] = logging.getLogger(__name__)
     session: Optional[aiohttp.ClientSession]
 
     # JSON response sanitizing.
@@ -51,8 +51,6 @@ class UniversalisAPI:
         return self._pre_formatted_keys
 
     def __init__(self, session: Optional[aiohttp.ClientSession] = None) -> None:
-        self.logger.name = __class__.__name__
-
         # This will be for GarlandAPI and UniversalisAPI or anything needing a ClientSession
         # Setting it to None by default will be the best as to keep the class as light weight as possible at runtime unless needed.
         self.session = session
@@ -76,7 +74,7 @@ class UniversalisAPI:
         if self.session is not None:
             await self.session.close()
 
-    async def _request(self, url: str) -> Any:
+    async def _request(self, url: str, **request_params: Any) -> Any:
         cur_time: datetime = datetime.now()
         max_diff = timedelta(milliseconds=1000 / self.max_api_calls)
         if (cur_time - self.api_call_time) < max_diff:
@@ -85,8 +83,7 @@ class UniversalisAPI:
 
         if self.session is None:
             self.session = aiohttp.ClientSession()
-
-        data: aiohttp.ClientResponse = await self.session.get(url=url)
+        data: aiohttp.ClientResponse = await self.session.get(url=url, **request_params)
         if data.status != 200:
             self.logger.error("We encountered an error in Universalis _request. Status: %s | API: %s", data.status, url)
             raise ConnectionError("We encountered an error in Universalis _request. Status: %s | API: %s", data.status, url)
@@ -113,7 +110,8 @@ class UniversalisAPI:
 
     async def get_current_data(
         self,
-        items: Union[list[str | int], str | int],
+        items: Union[list[str] | list[int], str | int],
+        *,
         world_or_dc: DataCenterEnum | WorldEnum = DataCenterEnum.Crystal,
         num_listings: int = 10,
         num_history_entries: int = 10,
@@ -123,22 +121,33 @@ class UniversalisAPI:
         # Sanitize the value as a str for usage.
         if isinstance(items, int):
             items = str(items)
-
-        self.logger.debug(
-            "Marketboard `get_current_data`. | Datacenter: %s | Num of Items: %s | Data Type: %s", world_or_dc.name, len(items), type(items)
-        )
+        elif isinstance(items, list) and len(items) == 1:
+            items = items[0]
 
         # ? Suggestion
         # Handle lists over 1k items.
         if isinstance(items, list):
+            self.logger.debug(
+                "<Universalis.get_current_data>. | Datacenter: %s | Num of Items: %s | Data Type: %s",
+                world_or_dc.name,
+                len(items),
+                type(items),
+            )
             for e in items:
                 items = ",".join(str(e))
+        else:
+            self.logger.debug(
+                "<Universalis.get_current_data>. | Datacenter: %s | Item: %s | Data Type: %s",
+                world_or_dc.name,
+                items,
+                type(items),
+            )
         api_url: str = (
             f"{self.base_api_url}/{world_or_dc.name}/{items}?listings={num_listings}&entries={num_history_entries}&hq={item_quality.value}"
         )
         if trim_item_fields:
             api_url += self.api_trim_item_fields
-
+        self.logger.debug("<Universalis.get_current_data> URL: %s", api_url)
         res: CurrentTyped = await self._request(url=api_url)
         return CurrentData(data=res)
 
@@ -242,8 +251,8 @@ class CurrentData:
     world_id: int
     last_upload_time: int
     dc_name: str  # dc only
-    listings: list[CurrentKeysTyped]
-    recent_history: list[CurrentKeysTyped]
+    listings: list[CurrentKeys]
+    recent_history: list[CurrentKeys]
     current_average_price: float | int
     current_average_price_nq: float | int
     current_average_price_hq: float | int
@@ -273,8 +282,12 @@ class CurrentData:
     def __init__(self, data: CurrentTyped) -> None:
         for key, value in data.items():
             key = UniversalisAPI.pep8_key_name(key_name=key)
-            setattr(self, key, value)
-            pass
+            if (isinstance(value, list) and key == "recent_history") or key == "listings":
+                # ? Suggestion
+                # I need to learn how to properly type hint this data structure given I am checking the keys but not "properly"
+                setattr(self, key, [CurrentKeys(data=entry) for entry in value if isinstance(entry, dict)])  # type: ignore
+            else:
+                setattr(self, key, value)
 
     def __repr__(self) -> str:
         return pformat(vars(self))
@@ -310,3 +323,14 @@ class CurrentKeys:
     tax: int
     timestamp: int
     buyer_name: str
+
+    def __init__(self, data: CurrentKeysTyped) -> None:
+        for key, value in data.items():
+            key = UniversalisAPI.pep8_key_name(key_name=key)
+            setattr(self, key, value)
+
+    def __repr__(self) -> str:
+        return pformat(vars(self))
+
+    def __str__(self) -> str:
+        return self.__repr__()

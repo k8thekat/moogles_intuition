@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any, NotRequired, Optional, TypedDict, Union
 
 
 class ConvertCSVtoJsonParams(TypedDict, total=False):
@@ -80,6 +80,7 @@ class XIVFishParameterTyped(TypedDict):
 
 
 class XIVGatheringItemTyped(TypedDict):
+    id: int
     item: int  # Row
     gathering_item_level: int  # GatheringItemLevelConvertTable
     quest: bool  # Quest
@@ -493,3 +494,31 @@ class XIVPlaceNameTyped(TypedDict):
     id: int
     name: str
     name_no_article: str
+
+
+class GetItemParamsTyped(TypedDict, total=False):
+    match: int
+    limit_results: int
+
+
+class AllagonToolsInventoryCSVTyped(TypedDict):
+    favourite: bool
+    icon: NotRequired[str]
+    name: str
+    type: str
+    total_quantity_available: int
+    source: str
+    inventory_location: str
+
+
+class FF14AnglerLocationTyped(TypedDict, total=False):
+    baits: FF14AnglerBaitsTyped
+    double_fish: int
+    name: str
+    restrictions: list[str]
+    tug_time: str
+
+
+class FF14AnglerBaitsTyped(TypedDict):
+    name: str
+    percent: float

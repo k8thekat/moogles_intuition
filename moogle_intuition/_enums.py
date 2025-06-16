@@ -1,29 +1,29 @@
 from __future__ import annotations
 
 from enum import Enum, IntEnum
-from typing import ClassVar, NamedTuple
 
 __all__ = (
-    "InventoryLocations",
+    "InventoryLocationEnum",
     "JobEnum",
     "LocalizationEnum",
     "SaleTypeEnum",
     "XIVCraftTypeEnum",
     "XIVEquipSlotCategoryEnum",
+    "XIVFishingSpotCategoryEnum",
     "XIVGrandCompanyEnum",
     "XIVItemSeriesEnum",
-    "XIVItemSpecialBonus",
+    "XIVItemSpecialBonusEnum",
     "XIVItemUICategoryEnum",
 )
 
 
-class InventoryLocations(IntEnum):
+class InventoryLocationEnum(IntEnum):
     """
     Enum for specifying Item Location in relation to the in game world.
 
     Parameters
     -----------
-        PLAYER = 0 |
+        NULL = 0 |
         BAG = 1 |
         MARKET = 2 |
         PREMIUM_SADDLEBAG_LEFT = 3 |
@@ -33,6 +33,10 @@ class InventoryLocations(IntEnum):
         FREE_COMPANY = 7 |
         GLAMOUR_CHEST = 8 |
         ARMORY = 9 |
+        EQUIPPED = 10 | This is from Allagon Tools Inventory exports
+        CRYSTALS = 11 |
+        CURRENCY = 12 |
+        ARMOIRE = 13 | This is from Allagon Tools Inventory exports
     """
 
     null = 0
@@ -48,6 +52,7 @@ class InventoryLocations(IntEnum):
     equipped_gear = 10
     crystals = 11
     currency = 12
+    armoire = 13
 
 
 class LocalizationEnum(Enum):
@@ -377,10 +382,23 @@ class XIVItemSeriesEnum(Enum):
     Outfits = 112
 
 
-class XIVItemSpecialBonus(Enum):
+class XIVItemSpecialBonusEnum(Enum):
     UNK = 1
     Set_Bonus_ = 2
     Sanction_ = 4
     Set_Bonus_Capped_ = 6
     Eureka_Effect_ = 7
     Save_the_Queen_Area_Effect = 8
+
+
+class XIVFishingSpotCategoryEnum(Enum):
+    UNK = 0
+    Ocean = 1
+    Freshwater = 2
+    Dunefishing = 3
+    Skyfishing = 4
+    Cloudfishing = 5
+    Hellfishing = 6
+    Aetherfishing = 7
+    Saltfishing = 8
+    Starfishing = 9

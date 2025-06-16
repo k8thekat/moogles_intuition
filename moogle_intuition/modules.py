@@ -3,10 +3,14 @@ from __future__ import annotations
 import csv
 import json
 import logging
+from io import TextIOWrapper
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Optional, Unpack, overload
+from pprint import pformat
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Optional, Union, Unpack, overload
 
 import aiohttp
+from bs4 import BeautifulSoup, Tag
+from bs4.element import NavigableString, PageElement
 from thefuzz import fuzz
 
 from moogle_intuition._types import (
@@ -14,29 +18,39 @@ from moogle_intuition._types import (
     XIVGatheringItemLevelTyped,
     XIVGatheringItemTyped,
     XIVItemTyped,
+    XIVPlaceNameTyped,
     XIVRecipeLevelTyped,
     XIVRecipeLookUpTyped,
 )
 
 from ._enums import (
+    InventoryLocationEnum,
     XIVCraftTypeEnum,
     XIVEquipSlotCategoryEnum,
+    XIVFishingSpotCategoryEnum,
     XIVGrandCompanyEnum,
     XIVItemSeriesEnum,
-    XIVItemSpecialBonus,
+    XIVItemSpecialBonusEnum,
     XIVItemUICategoryEnum,
 )
 from .garland_tools import GarlandAPI
 from .universalis import UniversalisAPI
+from .universalis._enums import ItemQualityEnum
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from aiohttp import ClientResponse
     from aiohttp.client import _RequestOptions
 
     from moogle_intuition.universalis import CurrentData
 
     from ._types import (
+        AllagonToolsInventoryCSVTyped,
         ConvertCSVtoJsonParams,
+        FF14AnglerBaitsTyped,
+        FF14AnglerLocationTyped,
+        GetItemParamsTyped,
         XIVBaseParamTyped,
         XIVClassJobCategoryTyped,
         XIVClassJobTyped,
@@ -52,6 +66,20 @@ if TYPE_CHECKING:
         XIVRecipeTyped,
     )
     from .universalis._types import MarketBoardParams
+
+    DataTypeAliases = Union[
+        XIVItemTyped,
+        XIVGatheringItemTyped,
+        XIVFishingSpotTyped,
+        XIVRecipeLookUpTyped,
+        XIVRecipeTyped,
+        XIVRecipeLevelTyped,
+        XIVFishParameterTyped,
+        XIVFishingSpotTyped,
+        AllagonToolsInventoryCSVTyped,
+        XIVPlaceNameTyped,
+        XIVGatheringItemLevelTyped,
+    ]
 
 
 __all__ = (
@@ -89,6 +117,51 @@ URLS: dict[str, tuple[bool, str]] = {
     "class_job_category": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/ClassJobCategory.csv"),
     "place_name": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/PlaceName.csv"),
 }
+
+
+class FFXIVObject:
+    """
+    Our Base object class for FFXIV related object handling.
+
+    """
+
+    logger: ClassVar[logging.Logger] = logging.getLogger()
+    _ffxivhandler: FFXIVHandler
+    _raw: DataTypeAliases
+    _repr_keys: list[str]
+
+    def __init__(self, data: DataTypeAliases) -> None:
+        """
+        Handles setting our `_raw` attribute and fetching our Singleton `FFXIVHandler` class.
+
+        Parameters
+        -----------
+        data: :class:`Any`
+            Generic typed as the data structure being passed in is typically a dict.
+        """
+        self._ffxivhandler = FFXIVHandler.get_handler()
+        self._raw = data
+        self.logger.debug("<%s.__init__()> data: %s", __class__.__name__, data)
+
+    # def __getattribute__(self, name: str) -> Any:
+    #     try:
+    #         return super().__getattribute__(name)
+    #     except AttributeError:
+    #         return None
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
+    def __repr__(self) -> str:
+        self.logger.debug(pformat(vars(self)))
+        try:
+            return f"\n\n__{self.__class__.__name__}__\n" + "\n".join([
+                f"{e}: {getattr(self, e)}" for e in self._repr_keys if e.startswith("_") is False
+            ])
+        except AttributeError:
+            return f"\n\n__{self.__class__.__name__}__\n" + "\n".join([
+                f"{e}: {getattr(self, e)}" for e in sorted(self.__dict__) if e.startswith("_") is False
+            ])
 
 
 class FFXIVHandler(UniversalisAPI):
@@ -183,23 +256,28 @@ class FFXIVHandler(UniversalisAPI):
 
     # Recipe Handling.
     # I am storing "Recipe ID" : "Item Result ID"
-    # recipe_dict: dict[str, int]
+    recipe_dict: dict[str, int]  # ? Unsure why this was commented out, need to validate usage.
     recipe_json: dict[str, XIVRecipeTyped]
+
     # Job Recipe Table
-    recipelookup_json: dict[str, XIVRecipeLookUpTyped]
+    recipe_lookup_json: dict[str, XIVRecipeLookUpTyped]
+
     # Recipe Level Table
-    recipelevel_json: dict[str, XIVRecipeLevelTyped]
+    recipe_level_json: dict[str, XIVRecipeLevelTyped]
+
     # Gatherable Items Handling.
-    gatheringitem_dict: dict[str, int]
-    gatheringitem_json: dict[str, XIVGatheringItemTyped]
-    gatheringitemlevel_json: dict[str, XIVGatheringItemLevelTyped]
+    gathering_item_dict: dict[str, int]
+    gathering_item_json: dict[str, XIVGatheringItemTyped]
+    gathering_item_level_json: dict[str, XIVGatheringItemLevelTyped]
+
     # Fishing Related
-    fishparameter_json: dict[str, XIVFishParameterTyped]
+    fish_parameter_json: dict[str, XIVFishParameterTyped]
     # This is stored with FLIPPED key to values ("Item ID" : "Dict Index")
-    fishparameter_dict: dict[int, str]
-    fishingspot_json: dict[str, XIVFishingSpotTyped]
+    fish_parameter_dict: dict[int, str]
+    fishing_spot_json: dict[str, XIVFishingSpotTyped]
+
     # Location Information
-    placename_json: dict[str, XIVPlaceNameTyped]
+    place_name_json: dict[str, XIVPlaceNameTyped]
 
     # Marketboard Integration
     universalis: UniversalisAPI | None
@@ -231,14 +309,14 @@ class FFXIVHandler(UniversalisAPI):
         Validate's the required files for FFXIVHandler to operate.
         - Files are located in `xiv_datamining`.
         """
-        self.logger.info("Validating json files... | Path: %s", self.data_path)
+        self.logger.debug("Validating json files... | Path: %s", self.data_path)
         for key, data in URLS.items():
             # lets check for the json file, which is all we care about to build our data structures.
             f_path: Path = Path(self.data_path).joinpath(key + ".json")
-            self.logger.info("Validating file... %s. | Exists: %s | Path: %s", key, f_path.exists(), f_path)
+            self.logger.debug("Validating file... %s. | Exists: %s | Path: %s", key, f_path.exists(), f_path)
             if f_path.exists() is False:
                 await self.fetch_csv_build_json(url=data[1], file_name=key + ".csv", convert_pound=data[0])
-                self.logger.info("Finished retrieving and building data for file.| File: %s", key)
+                self.logger.debug("Finished retrieving and building data for file.| File: %s", key)
 
     @classmethod
     async def build_handler(cls, auto_builder: bool = True) -> FFXIVHandler:
@@ -354,7 +432,7 @@ class FFXIVHandler(UniversalisAPI):
         setattr(self, file_name.replace(".", "_"), data)
         if no_ref_dict is True:
             self.logger.debug(
-                "Set JSON data from %s | Attr: %s | Number of Items: %s | Path: %s",
+                "<FFXIVHandler.generate_reference_dict()> `no_ref_dict` from %s | Attr: %s | Number of Items: %s | Path: %s",
                 file_name,
                 file_name.replace(".", "_"),
                 len(data),
@@ -381,7 +459,7 @@ class FFXIVHandler(UniversalisAPI):
         # file_name = "item.json" -> ["item", "json"] -> "item_dict"
         setattr(self, file_name.split(".")[0] + "_dict", item_dict)
         self.logger.debug(
-            "Generated the reference dict from `%s`.| Attrs: %s , %s | Value Key: %s | Number of Items: %s | Path: %s",
+            "<FFXIVHandler.generate_reference_dict()> from `%s`.| Attrs: %s , %s | Value Key: %s | Number of Items: %s | Path: %s",
             file_name,
             file_name.replace(".", "_"),
             file_name.split(".")[0] + "_dict",
@@ -390,14 +468,14 @@ class FFXIVHandler(UniversalisAPI):
             self.data_path.joinpath(file_name),
         )
 
-    # @overload
-    # def get_item(self,item_id: int) -> FFXIVItem: ...
+    @overload
+    def get_item(self, item_id: int, **kwargs: Unpack[GetItemParamsTyped]) -> FFXIVItem: ...
 
-    # @overload
-    # def get_item(self, item_id = None, item_name: str) -> list[FFXIVItem] | FFXIVItem: ...
+    @overload
+    def get_item(self, *, item_name: str, match: int = ..., limit_results: Literal[1]) -> FFXIVItem: ...
 
-    # @overload
-    # def get_item(self,item_id: Optional[int] = None) -> list[FFXIVItem] | FFXIVItem: ...
+    @overload
+    def get_item(self, *, item_name: str, limit_results: int = ...) -> list[FFXIVItem]: ...
 
     def get_item(
         self,
@@ -423,7 +501,7 @@ class FFXIVHandler(UniversalisAPI):
 
         Returns
         --------
-        :class:`FFXIVItem | list[FFXIVItem]`
+        :class:`list[FFXIVItem]`
             A list or single entry of an FFXIVItem.
 
         Raises
@@ -518,6 +596,8 @@ class FFXIVHandler(UniversalisAPI):
         if len(matches) == 0:
             raise KeyError("Unable to find the item name provided. | Item Name: %s", item_name)
         self.logger.debug("Returning %s Partial Matches", len(matches[:limit_results]))
+        if limit_results == 1:
+            return matches[0]
         return matches[:limit_results]
 
     def get_item_job_recipes(self, item_id: int) -> FFXIVJobRecipe:
@@ -543,9 +623,9 @@ class FFXIVHandler(UniversalisAPI):
         self.logger.debug(
             "Searching... Job Recipe by Item ID: %s | Entries: %s",
             item_id,
-            len(self.recipelookup_json),
+            len(self.recipe_lookup_json),
         )
-        data: Optional[XIVRecipeLookUpTyped] = self.recipelookup_json.get(str(item_id), None)
+        data: Optional[XIVRecipeLookUpTyped] = self.recipe_lookup_json.get(str(item_id), None)
         if data is None:
             raise ValueError("We failed to lookup Item ID: %s in our recipelookup.json file", item_id)
         return FFXIVJobRecipe(data=data)
@@ -601,9 +681,9 @@ class FFXIVHandler(UniversalisAPI):
         self.logger.debug(
             "Searching... Recipe Level ID: %s | Entries: %s",
             recipe_level_id,
-            len(self.recipelevel_json),
+            len(self.recipe_level_json),
         )
-        data: Optional[XIVRecipeLevelTyped] = self.recipelevel_json.get(str(recipe_level_id), None)
+        data: Optional[XIVRecipeLevelTyped] = self.recipe_level_json.get(str(recipe_level_id), None)
         if data is None:
             raise ValueError(
                 "We failed to lookup Recipe Level ID: %s in our recipelevel.json file",
@@ -611,7 +691,7 @@ class FFXIVHandler(UniversalisAPI):
             )
         return FFXIVRecipeLevel(data=data)
 
-    def get_gathering_level(self, gathering_level_id: int) -> XIVGatheringItemLevelTyped:
+    def get_gathering_level(self, gathering_level_id: int) -> FFXIVGatheringItemLevel:
         """
         Retrieves the JSON data related to the gathering item level, which includes `stars` and `item level` for the `item`.
 
@@ -622,7 +702,7 @@ class FFXIVHandler(UniversalisAPI):
 
         Returns
         --------
-        :class:`XIVGatheringItemLevelTyped`
+        :class:`FFXIVGatheringItemLevel`
             The JSON data from the `gathering_item_level.json` related to the `gathering_level_id` parameter passed in.
 
         Raises
@@ -633,15 +713,15 @@ class FFXIVHandler(UniversalisAPI):
         self.logger.debug(
             "Searching... Gathering Item Level ID: %s | Entries: %s",
             gathering_level_id,
-            len(self.gatheringitemlevel_json),
+            len(self.gathering_item_level_json),
         )
-        data: Optional[XIVGatheringItemLevelTyped] = self.gatheringitemlevel_json.get(str(gathering_level_id), None)
+        data: Optional[XIVGatheringItemLevelTyped] = self.gathering_item_level_json.get(str(gathering_level_id), None)
         if data is None:
             raise ValueError(
                 "We failed to lookup Gathering Item Level ID: %s in our gatheringitemlevel.json file",
                 gathering_level_id,
             )
-        return data
+        return FFXIVGatheringItemLevel(data=data)
 
     def get_fishing_spot(self, fishing_spot_id: int) -> FFXIVFishingSpot:
         """
@@ -665,9 +745,9 @@ class FFXIVHandler(UniversalisAPI):
         self.logger.debug(
             "Searching... Fishing Spot ID: %s | Entries: %s",
             fishing_spot_id,
-            len(self.fishingspot_json),
+            len(self.fishing_spot_json),
         )
-        data: Optional[XIVFishingSpotTyped] = self.fishingspot_json.get(str(fishing_spot_id), None)
+        data: Optional[XIVFishingSpotTyped] = self.fishing_spot_json.get(str(fishing_spot_id), None)
         if data is None:
             raise ValueError(
                 "We failed to lookup Fishing Spot ID: %s in our fishingspot.json file",
@@ -675,7 +755,7 @@ class FFXIVHandler(UniversalisAPI):
             )
         return FFXIVFishingSpot(data=data)
 
-    def get_place_name(self, place_id: int) -> XIVPlaceNameTyped:
+    def get_place_name(self, place_id: int) -> FFXIVPlaceName:
         """
         Retrieve any information related to the provided `place_id` parameter inside our `place_name.json` file.
 
@@ -697,25 +777,25 @@ class FFXIVHandler(UniversalisAPI):
         self.logger.debug(
             "Searching... Place Name ID: %s | Entries: %s",
             place_id,
-            len(self.placename_json),
+            len(self.place_name_json),
         )
-        data: Optional[XIVPlaceNameTyped] = self.placename_json.get(str(place_id), None)
+        data: Optional[XIVPlaceNameTyped] = self.place_name_json.get(str(place_id), None)
         if data is None:
             raise ValueError(
                 "We failed to lookup Place Name ID: %s in our placename.json file",
                 place_id,
             )
-        return data
+        return FFXIVPlaceName(data=data)
 
     def _is_fishable(self, item_id: int) -> FFXIVFishParameter:
         """
         Check's if an Item ID is gatherable via fishing.
         """
-        key: Optional[str] = self.fishparameter_dict.get(item_id, None)
+        key: Optional[str] = self.fish_parameter_dict.get(item_id, None)
         self.logger.debug(
             "Searching... Fishing Parameter for Item ID: %s | Entries: %s ",
             item_id,
-            len(self.fishparameter_dict),
+            len(self.fish_parameter_json),
         )
         if key is None:
             raise ValueError(
@@ -723,7 +803,8 @@ class FFXIVHandler(UniversalisAPI):
                 item_id,
             )
         else:
-            data: Optional[XIVFishParameterTyped] = self.fishparameter_json.get(str(key), None)
+            data: Optional[XIVFishParameterTyped] = self.fish_parameter_json.get(str(key), None)
+
         if data is not None:
             return FFXIVFishParameter(data=data)
         raise ValueError(
@@ -738,11 +819,11 @@ class FFXIVHandler(UniversalisAPI):
         self.logger.debug(
             "Searching... Gathering Item for Item ID: %s | Entries: %s ",
             item_id,
-            len(self.gatheringitem_dict),
+            len(self.gathering_item_dict),
         )
-        for key, value in self.gatheringitem_dict.items():
+        for key, value in self.gathering_item_dict.items():
             if item_id == value:
-                data: XIVGatheringItemTyped | None = self.gatheringitem_json.get(key, None)
+                data: XIVGatheringItemTyped | None = self.gathering_item_json.get(key, None)
                 if data is not None:
                     return FFXIVGatheringItem(data=data)
                 else:
@@ -1192,10 +1273,14 @@ class FFXIVHandler(UniversalisAPI):
         return True
 
     async def get_mb_current_data(
-        self, item_names: Optional[list[str]] = None, item_ids: Optional[list[int]] = None, **kwargs: Unpack[MarketBoardParams]
+        self,
+        item_names: Optional[list[str] | list[FFXIVItem]] = None,
+        item_ids: Optional[list[int] | list[FFXIVItem]] = None,
+        **kwargs: Unpack[MarketBoardParams],
     ) -> list[CurrentData] | CurrentData | None:
         """
-        Bulk Universalis Marketboard data fetching.
+        Get Universalis current marketboard data.
+        - If the `item_names` parameter can yield multiple results; it will only return the best matched item in the query.
 
         Parameters
         -----------
@@ -1223,29 +1308,210 @@ class FFXIVHandler(UniversalisAPI):
             self.universalis = universalis
         else:
             universalis: UniversalisAPI = self.universalis
-
+        query: list[int] = []
+        # Allow handling of Item names dynamically.
         if item_names is not None and isinstance(item_names, list):
             for name in item_names:
                 # Just in case we fail to find the item.
-                try:
-                    res: FFXIVItem | list[FFXIVItem] = self.get_item(item_name=name, limit_results=1)
-                except ValueError:
-                    return None
+                if isinstance(name, FFXIVItem):
+                    query.append(name.id)
+                elif isinstance(name, str):
+                    try:
+                        # This is a jank handler because if we get multiple results and return all those MB values it could be an issue.
+                        query.append(self.get_item(item_name=name, limit_results=1).id)
+                    except ValueError:
+                        continue
 
-                if isinstance(res, list):
-                    return await universalis.get_current_data(items=[entry.id for entry in res], **kwargs)
-                return await universalis.get_current_data(items=res.id, **kwargs)
         elif item_ids is not None and isinstance(item_ids, list):
-            return await universalis.get_current_data(items=item_ids, **kwargs)
+            query.extend([item.id if isinstance(item, FFXIVItem) else item for item in item_ids])
+
+        self.logger.debug(
+            "Universalis obj: %s | Item IDS: %s | Item Names: %s | Query: %s",
+            universalis,
+            len(item_ids) if item_ids is not None else None,
+            len(item_names) if item_names is not None else None,
+            len(query),
+        )
+        return await universalis._get_bulk_current_data(items=query, **kwargs)
+
+    def parse_atools_csv(
+        self,
+        data: bytes | str | Path,
+        *,
+        omit_inv_locs: list[InventoryLocationEnum] = [
+            InventoryLocationEnum.free_company,
+            InventoryLocationEnum.currency,
+            InventoryLocationEnum.crystals,
+            InventoryLocationEnum.glamour_chest,
+            InventoryLocationEnum.market,
+            InventoryLocationEnum.armoire,
+            InventoryLocationEnum.armory,
+            InventoryLocationEnum.equipped_gear,
+        ],
+        omit_item_names: list[str] = [],
+    ) -> list[FFXIVInventoryItem]:
+        """
+        Takes in the provided CSV data or :class:`Path` to the Allagon Tools Inventory CSV export file and returns a list of converted items with IDs.
+        - These objects are a smaller reference of FFXIVItems as they container character specific information.
+
+        Parameters
+        -----------
+        data: :class:`bytes | str | Path`
+            The source of the CSV file data. This assumes the data structure of the CSV file is using `\n` as a seperator for rows.
+            - If `bytes` it will use `utf-8` to decode the bytes array.
+        omit_inv_locs: :class:`list[InventoryLocationEnum]`, optional
+            The inventory location of the item to omit from our returned list, by default
+            `[InventoryLocationEnum.free_company, InventoryLocationEnum.currency, InventoryLocationEnum.crystals, InventoryLocationEnum.glamour_chest, InventoryLocationEnum.market, InventoryLocationEnum.armoire, InventoryLocationEnum.armory, InventoryLocationEnum.equipped_gear]`.
+        omit_item_names: :class:`list[str]`, optional
+            Any item names to omit such as `Free Company Credits` as it's not apart of the XIV Item.json, by default [].
+
+        Returns
+        --------
+        :class:`list[FFXIVInventoryItem]`
+            Returns a list of converted CSV data into FFXIVInventoryItem.
+        """
+        if isinstance(data, (bytes, str)):
+            if isinstance(data, bytes):
+                data = data.decode(encoding="utf-8")
+            keys = data.split("\n")[0]
+            file = data
+
+        elif isinstance(data, Path):
+            file = data.open()
+            # There is some funky char at the front of the keys line
+            keys = file.readline()[1:]
+            # data = file.read()
+
+        # Keys= "Favorite?", "Icon", "Name", "Type", "Total Quantity Available", "Source", "Inventory Location"
+        # We know the structure of res to be Iterator[AllagonToolsInventoryCSV].
+        keys = keys.strip().replace("?", "").lower().replace(" ", "_").split(",")
+        res: Iterator[AllagonToolsInventoryCSVTyped] = csv.DictReader(file, fieldnames=keys)  # type:ignore
+        self.logger.debug(
+            "%s.%s | Keys: %s | Data Size: %s", __class__.__name__, __name__, keys, len(file) if isinstance(file, str) else "UNK"
+        )
+        inventory: list[FFXIVInventoryItem] = []
+        for entry in res:
+            if entry["name"].lower().startswith("free company credits") or entry["name"].lower() in omit_item_names:
+                self.logger.debug("Skipping Item Name: %s", entry["name"])
+                continue
+            # Given we are using item names; there is a "small" chance it will return incorrect items
+            # but it should find everything as it's directly from the game.
+            try:
+                item_id: FFXIVItem = self.get_item(item_name=entry["name"], limit_results=1, match=95)
+            except KeyError:
+                self.logger.warning("Failed to lookup item name: %s, skipping this entry", entry["name"])
+                continue
+
+            item = FFXIVInventoryItem(item_id=item_id.id, data=entry)
+            # If we have inventory locations to omit and our item is NOT in that list of locations, lets add it to our results.
+            if item.location not in omit_inv_locs:
+                inventory.append(item)
+
+        if isinstance(file, TextIOWrapper):
+            file.close()
+        return inventory
+
+    # async def get_ff14angler_data(self, location_id: int) -> FF14AnglerLocationTyped:
+    #     data: bytes = await self.request_file_data("https://en.ff14angler.com/spot/" + str(location_id))
+    #     soup = BeautifulSoup(markup=data, features="html.parser")
+
+    #     # ID is the ff14 angler fishing ID, each entry is a dictionary containing
+    #     #    name, TackleID->percent, Restrictions
+    #     fishing_data: FF14AnglerLocationTyped = {}
+
+    #     # get the available fish, skipping headers/etc
+    #     lookup: Optional[PageElement | Tag | NavigableString] = soup.find(class_="info_section list")
+    #     if isinstance(lookup, Tag):
+    #         try:
+    #             possible_fish = list(lookup.children)[5]
+    #             if isinstance(possible_fish, Tag):
+    #                 available_fish = list(possible_fish.children)
+    #             else:
+    #                 raise LookupError
+    #         except IndexError:
+    #             self.logger.error("<%s.get_ff14angler_data()> failed to find possible fish via indexing. | Data: %s", lookup.children)
+    #             raise IndexError
+    #     else:
+    #         self.logger.error("<%s.get_ff14angler_data()> failed class section lookup and or are not the right type: %s", type(lookup))
+    #         raise LookupError
+
+    #     # Every other entry is empty, so we use a step of 2.
+    #     for cur_fish_index in range(1, len(available_fish), 2):
+    #         cur_fish = list(available_fish[cur_fish_index].children)
+    #         CurFishIDName = cur_fish[3].find("a")
+    #         CurFishID = int(CurFishIDName.get("href").split("/")[-1])
+    #         CurFishName = list(CurFishIDName.children)[2].strip()
+
+    #         CurFishRestrictions = []
+    #         CurFishRestrictionList = cur_fish[5]
+    #         if CurFishRestrictionList.string != None:
+    #             RestrictionString = CurFishRestrictionList.string.strip()
+    #             if len(RestrictionString):
+    #                 CurFishRestrictions.append(RestrictionString.title())
+    #         else:
+    #             for CurFishRestrictionEntry in CurFishRestrictionList.children:
+    #                 if CurFishRestrictionEntry.name == "img":
+    #                     Restriction = CurFishRestrictionEntry.get("title").split(" ")
+    #                     CurFishRestrictions.append((" ".join(Restriction[1:])).title())
+    #                 elif CurFishRestrictionEntry.name == None:
+    #                     RestrictionString = CurFishRestrictionEntry.string.strip()
+    #                     if len(RestrictionString):
+    #                         CurFishRestrictions.append(RestrictionString.title())
+
+    #         CurFishTug = cur_fish[7].find(class_="tug_sec").string.strip()
+    #         CurFishDouble = cur_fish[9].find(class_="strong")
+    #         if CurFishDouble != None:
+    #             CurFishDouble = int(CurFishDouble.string.strip()[1:])
+    #         else:
+    #             CurFishDouble = 0
+
+    #         fishing_data[CurFishID] = {
+    #             "Name": CurFishName,
+    #             "Restrictions": CurFishRestrictions,
+    #             "Tug": CurFishTug,
+    #             "DoubleFish": CurFishDouble,
+    #         }
+
+    #     EffectiveBait = soup.find(id="effective_bait")
+    #     if EffectiveBait:
+    #         EffectiveBait = list(EffectiveBait.children)
+
+    #         # get the bait IDs and insert them into the data set
+    #         FishIDs = []
+    #         FishEntries = list(EffectiveBait[1].children)
+
+    #         # all entries have a blank gap, we also skip the first box as
+    #         # it is empty due to the grid design
+    #         for index in range(3, len(FishEntries), 2):
+    #             CurFishEntry = FishEntries[index].find("a")
+    #             CurFishName = CurFishEntry.get("title")
+    #             CurFishID = int(CurFishEntry.get("href").split("/")[-1])
+    #             FishIDs.append(CurFishID)
+
+    #         # now cycle through and grab % values for each fish, similar to the above
+    #         # every other entry is blank
+    #         for bait_index in range(3, len(EffectiveBait), 2):
+    #             CurBaitNumbers = list(EffectiveBait[bait_index].children)
+    #             CurBaitInfo = CurBaitNumbers[0].find("a")
+    #             CurBaitID = int(CurBaitInfo.get("href").split("/")[-1])
+    #             CurBaitName = CurBaitInfo.get("title")
+
+    #             for CurBaitIndex in range(2, len(CurBaitNumbers), 2):
+    #                 CurBaitInfo = CurBaitNumbers[CurBaitIndex].find("canvas")
+    #                 if CurBaitInfo:
+    #                     BaitPercent = float(CurBaitInfo.get("value")) / 100
+    #                     CurFishID = FishIDs[int((CurBaitIndex - 2) / 2)]
+    #                     fishing_data[CurFishID][CurBaitID] = {"Name": CurBaitName, "Percent": BaitPercent}
+    #     return fishing_data
 
 
-class FFXIVItem(GarlandAPI):
+class FFXIVItem(FFXIVObject):
     """
     Represents an FFXIV Item per XIV Datamining CSV.
     """
 
-    logger: logging.Logger
-    _ffxivhandler: FFXIVHandler
+    # logger: logging.Logger
+    # _ffxivhandler: FFXIVHandler
 
     id: int
     singular: str
@@ -1285,7 +1551,7 @@ class FFXIVItem(GarlandAPI):
     cooldown: int
     # ClassJob - https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/ClassJob.csv
     class_job_repair: XIVClassJobTyped
-    item_repair: int  # ? Suggestion -> ItemRepairResource - Mapped to a dict on FFXIVHandler.
+    item_repair: FFXIVItem  # ? Suggestion -> ItemRepairResource - Mapped to a dict on FFXIVHandler.
     item_glamour: int  # ? Suggestion -> Item
     desynth: int
     is_collectable: bool
@@ -1320,7 +1586,7 @@ class FFXIVItem(GarlandAPI):
     base_param_value4: int
     base_param5: XIVBaseParamTyped  # BaseParam
     base_param_value5: int
-    item_special_bonus: XIVItemSpecialBonus  # ItemSpecialBonus
+    item_special_bonus: XIVItemSpecialBonusEnum  # ItemSpecialBonus
     item_special_bonus_param: int
     base_param_special0: XIVBaseParamTyped  # BaseParam
     base_param_value_special0: int
@@ -1342,11 +1608,10 @@ class FFXIVItem(GarlandAPI):
     is_glamourous: bool
 
     def __init__(self, data: XIVItemTyped, session: Optional[aiohttp.ClientSession] = None) -> None:
-        self.logger: logging.Logger = logging.getLogger()
-        self._ffxivhandler = FFXIVHandler.get_handler()
+        super().__init__(data=data)
         self.session: Optional[aiohttp.ClientSession] = session
-
-        setattr(self, "_raw", data)
+        # This list to control the amount of information we return via `__str__()` and `__repr__()` dunder methods.
+        self._repr_keys = ["id", "name"]
 
         for key, value in data.items():
             if isinstance(value, int) and value != 0:
@@ -1354,29 +1619,49 @@ class FFXIVItem(GarlandAPI):
                     try:
                         setattr(self, key, XIVItemUICategoryEnum(value=value))
                     except ValueError:
-                        self.logger.warning("Failed to lookup Enum Value: %s in XIVItemUICategoryEnum.", value)
+                        self.logger.warning(
+                            "%s Item ID: %s failed to lookup enum value: %s in XIVItemUICategoryEnum.",
+                            self.__class__.__name__,
+                            self.id,
+                            value,
+                        )
                         setattr(self, key, value)
                 elif key == "equip_slot_category":
                     try:
                         setattr(self, key, XIVEquipSlotCategoryEnum(value=value))
                     except ValueError:
-                        self.logger.warning("Failed to lookup Enum Value: %s in XIVEquipSlotCategoryEnum.", value)
+                        self.logger.warning(
+                            "%s Item ID: %s failed to lookup enum value: %s in XIVEquipSlotCategoryEnum.",
+                            self.__class__.__name__,
+                            self.id,
+                            value,
+                        )
                         setattr(self, key, value)
 
                 elif key == "grand_company":
                     try:
                         setattr(self, key, XIVGrandCompanyEnum(value=value))
                     except ValueError:
-                        self.logger.warning("Failed to lookup Enum Value: %s in XIVGrandCompanyEnum.", value)
+                        self.logger.warning(
+                            "%s Item ID: %s failed to lookup enum value: %s in XIVGrandCompanyEnum.",
+                            self.__class__.__name__,
+                            self.id,
+                            value,
+                        )
                         setattr(self, key, value)
 
                 elif key == "item_special_bonus":
                     try:
-                        setattr(self, key, XIVItemSpecialBonus(value=value))
+                        setattr(self, key, XIVItemSpecialBonusEnum(value=value))
                     except ValueError:
-                        self.logger.warning("Failed to lookup Enum Value: %s in XIVItemSpecialBonus.", value)
+                        self.logger.warning(
+                            "%s Item ID: %s failed to lookup enum value: %s in XIVItemSpecialBonus.",
+                            self.__class__.__name__,
+                            self.id,
+                            value,
+                        )
                         setattr(self, key, value)
-
+                # We have a mapped dict tied to `FFXIVHandler.item_repair_dict` for the Grade X Matter to repair the item.
                 elif key == "item_repair":
                     item = self._ffxivhandler.item_repair_dict.get(value, 0)
                     if item == 0:
@@ -1388,7 +1673,9 @@ class FFXIVItem(GarlandAPI):
                     try:
                         setattr(self, key, XIVItemSeriesEnum(value=value))
                     except ValueError:
-                        self.logger.warning("Failed to lookup Enum Value: %s in XIVItemSeriesEnum.", value)
+                        self.logger.warning(
+                            "%s Item ID: %s failed to lookup enum value: %s in XIVItemSeriesEnum.", self.__class__.__name__, self.id, value
+                        )
                         setattr(self, key, value)
 
                 elif key == "item_glamour":
@@ -1418,19 +1705,19 @@ class FFXIVItem(GarlandAPI):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, self.__class__) and self.id == other.id
 
-    def __getattr__(self, name: str) -> Any:
-        # # Prevent accessing unset Garland Tools related attributes during runtime.
-        # if self.__cached__ is False and name in self.__cached_slots__:
-        #     raise AttributeError(self._no_cache)
+    # def __getattr__(self, name: str) -> Any:
+    #     # # Prevent accessing unset Garland Tools related attributes during runtime.
+    #     # if self.__cached__ is False and name in self.__cached_slots__:
+    #     #     raise AttributeError(self._no_cache)
 
-        # Prevent accessing unset Universalis related attributes during runtime.
-        # elif self.__market__ is False and name in self.__market_slots__:
-        #     raise AttributeError(self._no_market)
+    #     # Prevent accessing unset Universalis related attributes during runtime.
+    #     # elif self.__market__ is False and name in self.__market_slots__:
+    #     #     raise AttributeError(self._no_market)
 
-        try:
-            return super().__getattribute__(name)
-        except AttributeError:
-            return None
+    #     try:
+    #         return super().__getattribute__(name)
+    #     except AttributeError:
+    #         return None
 
     def __hash__(self) -> int:
         return hash(self.id)
@@ -1438,18 +1725,10 @@ class FFXIVItem(GarlandAPI):
     def __lt__(self, other: object) -> bool:
         return isinstance(other, self.__class__) and self.id < other.id
 
-    def __str__(self) -> str:
-        return self.__repr__()
-
-    def __repr__(self) -> str:
-        return f"\n{self.__class__.__name__}" + "\n".join([
-            f"{e}: {getattr(self, e)}" for e in sorted(self.__dict__) if e.startswith("_") is False
-        ])
-
     @property
     def recipe(self) -> FFXIVJobRecipe | None:
         """
-        Retrieves any Recipe information related to the item.
+        Retrieves the Recipe information related to the item.
 
         Returns
         --------
@@ -1464,7 +1743,7 @@ class FFXIVItem(GarlandAPI):
     @property
     def fishing(self) -> FFXIVFishParameter | None:
         """
-        Retrieves any Fishing information related to the item.
+        Retrieves the Fishing information related to the item.
 
         Returns
         --------
@@ -1479,7 +1758,7 @@ class FFXIVItem(GarlandAPI):
     @property
     def gathering(self) -> FFXIVGatheringItem | None:
         """
-        Retrieves any Gathering information related to the item.
+        Retrieves the Gathering information related to the item.
 
         Returns
         --------
@@ -1506,34 +1785,43 @@ class FFXIVItem(GarlandAPI):
     def mb_history(self) -> Any:
         pass
 
-    async def mb_current_data(self, **kwargs: Unpack[MarketBoardParams]) -> CurrentData:
+    async def get_mb_current_data(self, **kwargs: Unpack[MarketBoardParams]) -> CurrentData:
+        """
+        Retrieve the current Marketboard data for this item, while also setting the `FFXIVItem.mb_current` property.
+
+        Parameters
+        -----------
+        **kwargs: :class:`Unpack[MarketBoardParams]`
+            Any additional parameters to change the results of the data.
+
+        Returns
+        --------
+        :class:`CurrentData`
+            The JSON response converted into a :class:`CurrentData` object.
+        """
         # Just for the first call, let's setup UniversalisAPI
         if self._ffxivhandler.universalis is None:
             universalis = UniversalisAPI(session=self.session)
             self._ffxivhandler.universalis = universalis
         else:
             universalis: UniversalisAPI = self._ffxivhandler.universalis
-        self._mb_current: CurrentData = await universalis.get_current_data(items=[self.id], **kwargs)
+        self._mb_current: CurrentData = await universalis._get_current_data(item=self.id, **kwargs)
         return self._mb_current
 
 
-class FFXIVJobRecipe:
-    logger: ClassVar[logging.Logger] = logging.getLogger()
-    _ffxivhandler: FFXIVHandler
-
+class FFXIVJobRecipe(FFXIVObject):
     id: int
-    CRP: FFXIVRecipe | None  # Recipe
-    BSM: FFXIVRecipe | None  # Recipe
-    ARM: FFXIVRecipe | None  # Recipe
-    GSM: FFXIVRecipe | None  # Recipe
-    LTW: FFXIVRecipe | None  # Recipe
-    WVR: FFXIVRecipe | None  # Recipe
-    ALC: FFXIVRecipe | None  # Recipe
-    CUL: FFXIVRecipe | None  # Recipe
+    CRP: Optional[FFXIVRecipe]  # Recipe
+    BSM: Optional[FFXIVRecipe]  # Recipe
+    ARM: Optional[FFXIVRecipe]  # Recipe
+    GSM: Optional[FFXIVRecipe]  # Recipe
+    LTW: Optional[FFXIVRecipe]  # Recipe
+    WVR: Optional[FFXIVRecipe]  # Recipe
+    ALC: Optional[FFXIVRecipe]  # Recipe
+    CUL: Optional[FFXIVRecipe]  # Recipe
 
     def __init__(self, data: XIVRecipeLookUpTyped) -> None:
-        setattr(self, "_raw", data)
-        self._ffxivhandler = FFXIVHandler.get_handler()
+        super().__init__(data=data)
         for key, value in data.items():
             if isinstance(value, int) and value == 0:
                 continue
@@ -1543,23 +1831,12 @@ class FFXIVJobRecipe:
             else:
                 setattr(self, key, value)
 
-    def __str__(self) -> str:
-        return self.__repr__()
 
-    def __repr__(self) -> str:
-        return f"\n{self.__class__.__name__}" + "\n".join([
-            f"{e}: {getattr(self, e)}" for e in sorted(self.__dict__) if e.startswith("_") is False
-        ])
-
-
-class FFXIVRecipe:
+class FFXIVRecipe(FFXIVObject):
     """
     Represents an FFXIV Recipe per XIV Datamining CSV.
 
     """
-
-    logger: ClassVar[logging.Logger] = logging.getLogger()
-    _ffxivhandler: FFXIVHandler
 
     id: int  # The Recipe # in RecipeLookUp
     number: int
@@ -1601,18 +1878,21 @@ class FFXIVRecipe:
     can_hq: bool
     exp_rewarded: bool
     status_required: int  # Status
-    item_required: int  # Item
+    item_required: FFXIVItem  # Item
     is_specialization_required: FFXIVItem
     is_expert: bool
     patch_number: int
 
     def __init__(self, data: XIVRecipeTyped) -> None:
-        self._ffxivhandler: FFXIVHandler = FFXIVHandler.get_handler()
-        setattr(self, "_raw", data)
+        super().__init__(data=data)
+        # This list to control the amount of information we return via `__str__()` and `__repr__()` dunder methods.
+        self._repr_keys = ["id", "craft_type", "item_result", "patch_number", "is_expert", "item_required", "amount_result"]
 
         for key, value in data.items():
             if isinstance(value, int):
-                if key in ["is_specialization_required", "item_result"] or (key.startswith("item_ingredient") and value != 0):
+                if (
+                    key in ["is_specialization_required", "item_result", "item_required"] or key.startswith("item_ingredient")
+                ) and value != 0:
                     setattr(self, key, self._ffxivhandler.get_item(item_id=value))
 
                 elif key == "recipe_level_table":
@@ -1624,35 +1904,16 @@ class FFXIVRecipe:
                     except ValueError:
                         self.logger.warning("Failed to lookup Enum Value: %s in XIVCraftTypeEnum.", value)
                         setattr(self, key, value)
-
+                elif key in ["is_expert", "exp_rewarded", "can_hq", "can_quick_synth", "is_secondary"] and isinstance(value, int):
+                    setattr(self, key, bool(value))
                 else:
                     setattr(self, key, value)
 
             else:
                 setattr(self, key, value)
 
-    def __str__(self) -> str:
-        return self.__repr__()
 
-    def __repr__(self) -> str:
-        return f"\n{self.__class__.__name__}" + "\n".join([
-            f"{e}: {getattr(self, e)}" for e in sorted(self.__dict__) if e.startswith("_") is False
-        ])
-        # keys = ["craft_type", "recipe_level_table", "item_result", "item_ingredient"]
-        # temp: list[str] = []
-        # temp.append(self.__class__.__name__)
-        # for key in keys:
-        #     if key == "item_ingredient":
-        #         temp.extend(getattr(self, key + str(i)) for i in range(0, 8))
-        #     else:
-        #         temp.append(getattr(self, key))
-        # return "\n".join(temp)
-
-
-class FFXIVRecipeLevel:
-    logger: ClassVar[logging.Logger] = logging.getLogger()
-    _ffxivhandler: FFXIVHandler
-
+class FFXIVRecipeLevel(FFXIVObject):
     id: int
     class_job_level: int
     stars: int
@@ -1667,27 +1928,16 @@ class FFXIVRecipeLevel:
     conditions_flag: int
 
     def __init__(self, data: XIVRecipeLevelTyped) -> None:
-        setattr(self, "_raw", data)
-
+        super().__init__(data=data)
+        self._repr_keys = ["id", "class_job_level", "stars", "difficulty", "durability"]
         for key, value in data.items():
             setattr(self, key, value)
 
-    def __str__(self) -> str:
-        return self.__repr__()
 
-    def __repr__(self) -> str:
-        return f"\n{self.__class__.__name__}" + "\n".join([
-            f"{e}: {getattr(self, e)}" for e in sorted(self.__dict__) if e.startswith("_") is False
-        ])
-
-
-class FFXIVFishParameter:
-    logger: ClassVar[logging.Logger] = logging.getLogger()
-    _ffxivhandler: FFXIVHandler
-
+class FFXIVFishParameter(FFXIVObject):
     text: str
     item: FFXIVItem  # Row
-    gathering_item_level: XIVGatheringItemLevelTyped  # GatheringItemLevelConvertTable
+    gathering_item_level: FFXIVGatheringItemLevel  # GatheringItemLevelConvertTable
     ocean_stars: int
     is_hidden: bool
     fishing_record_type: int  # FishingRecordType
@@ -1697,44 +1947,40 @@ class FFXIVFishParameter:
     achievement_credit: int
 
     def __init__(self, data: XIVFishParameterTyped) -> None:
-        self._ffxivhandler: FFXIVHandler = FFXIVHandler.get_handler()
-        setattr(self, "_raw", data)
-
+        super().__init__(data=data)
+        self._repr_keys = ["text", "is_hidden", "gathering_item_level", "fishing_spot", "item"]
         for key, value in data.items():
             if isinstance(value, int):
-                if key == "item":
+                if key == "item" and value != 0:
                     setattr(self, key, self._ffxivhandler.get_item(item_id=value))
                 elif key == "gathering_item_level":
                     setattr(self, key, self._ffxivhandler.get_gathering_level(gathering_level_id=value))
-                elif key == "fishing_spot":
+                elif key == "fishing_spot" and value != 0:
                     setattr(self, key, self._ffxivhandler.get_fishing_spot(fishing_spot_id=value))
+                elif key in ["is_hidden", "is_in_log"] and isinstance(value, int):
+                    setattr(self, key, bool(value))
                 else:
                     setattr(self, key, value)
             else:
                 setattr(self, key, value)
 
-    def __str__(self) -> str:
-        return self.__repr__()
 
-    def __repr__(self) -> str:
-        return f"\n{self.__class__.__name__}" + "\n".join([
-            f"{e}: {getattr(self, e)}" for e in sorted(self.__dict__) if e.startswith("_") is False
-        ])
+class FFXIVFishingSpot(FFXIVObject):
+    """
+    FFXIVFishingSpot _summary_
 
 
-class FFXIVFishingSpot:
-    logger: ClassVar[logging.Logger] = logging.getLogger()
-    _ffxivhandler: FFXIVHandler
+    """
 
     id: int
     gathering_level: int
     big_fish_on_reach: str
     big_fish_on_end: str
-    fishing_spot_category: int
+    fishing_spot_category: XIVFishingSpotCategoryEnum  # ? Curious what this is tied too
     rare: bool
     territory_type: int  # TerritoryType
-    place_name_main: XIVPlaceNameTyped  # PlaceName
-    place_name_sub: XIVPlaceNameTyped  # PlaceName
+    place_name_main: FFXIVPlaceName  # PlaceName
+    place_name_sub: FFXIVPlaceName  # PlaceName
     x: int
     z: int
     radius: int
@@ -1748,80 +1994,171 @@ class FFXIVFishingSpot:
     item7: FFXIVItem  # Item
     item8: FFXIVItem  # Item
     item9: FFXIVItem  # Item
-    place_name: XIVPlaceNameTyped  # PlaceName
+    place_name: FFXIVPlaceName  # PlaceName
     order: int
 
     def __init__(self, data: XIVFishingSpotTyped) -> None:
-        self._ffxivhandler: FFXIVHandler = FFXIVHandler.get_handler()
-        setattr(self, "_raw", data)
-
+        super().__init__(data=data)
+        self._repr_keys = ["id", "gathering_level", "fishing_spot_category", "place_name"]
         for key, value in data.items():
-            if isinstance(value, int) and value != 0:
-                if key.startswith("item"):
+            if isinstance(value, int):
+                if key.startswith("item") and value != 0:
                     setattr(self, key, self._ffxivhandler.get_item(item_id=value))
                 elif key in ["place_name_main", "place_name_sub", "place_name"]:
                     setattr(self, key, self._ffxivhandler.get_place_name(place_id=value))
+                elif key.lower() == "fishing_spot_category":
+                    setattr(self, key, XIVFishingSpotCategoryEnum(value))
+                elif key in ["rare"]:
+                    setattr(self, key, bool(value))
+            else:
+                setattr(self, key, value)
+
+
+class FFXIVGatheringItem(FFXIVObject):
+    id: int  # Unsure, could be tied to a Gathering Node/Spot
+    item: FFXIVItem  # Row
+    gathering_item_level: FFXIVGatheringItemLevel  # GatheringItemLevelConvertTable
+    quest: bool  # Quest
+    is_hidden: bool
+
+    def __init__(self, data: XIVGatheringItemTyped) -> None:
+        super().__init__(data=data)
+        self._repr_keys = ["id", "quest", "is_hidden", "item", "gathering_item_level"]
+        for key, value in data.items():
+            if isinstance(value, int):
+                if key == "gathering_item_level":
+                    setattr(self, key, self._ffxivhandler.get_gathering_level(gathering_level_id=value))
+                elif key == "item" and value != 0:
+                    setattr(self, key, self._ffxivhandler.get_item(item_id=value))
+                elif key in ["is_hidden", "quest"]:
+                    setattr(self, key, bool(value))
                 else:
                     setattr(self, key, value)
             else:
                 setattr(self, key, value)
 
-    def __str__(self) -> str:
-        return self.__repr__()
 
-    def __repr__(self) -> str:
-        return f"\n{self.__class__.__name__}" + "\n".join([
-            f"{e}: {getattr(self, e)}" for e in sorted(self.__dict__) if e.startswith("_") is False
-        ])
+class FFXIVGatheringItemLevel(FFXIVObject):
+    id: int
+    gathering_item_level: int
+    stars: int
 
-
-class FFXIVGatheringItem:
-    logger: ClassVar[logging.Logger] = logging.getLogger()
-    _ffxivhandler: FFXIVHandler
-
-    item: int  # Row
-    gathering_item_level: XIVGatheringItemLevelTyped  # GatheringItemLevelConvertTable
-    quest: bool  # Quest
-    is_hidden: bool
-
-    def __init__(self, data: XIVGatheringItemTyped) -> None:
-        self._ffxivhandler = FFXIVHandler.get_handler()
-        setattr(self, "_raw", data)
-
+    def __init__(self, data: XIVGatheringItemLevelTyped) -> None:
+        super().__init__(data=data)
         for key, value in data.items():
-            if key == "gathering_item_level" and isinstance(value, int):
-                setattr(self, key, self._ffxivhandler.get_gathering_level(gathering_level_id=value))
-            else:
-                setattr(self, key, value)
-
-    def __str__(self) -> str:
-        return self.__repr__()
-
-    def __repr__(self) -> str:
-        return f"\n{self.__class__.__name__}" + "\n".join([
-            f"{e}: {getattr(self, e)}" for e in sorted(self.__dict__) if e.startswith("_") is False
-        ])
+            setattr(self, key, value)
 
 
-class FFXIVPlaceName:
-    logger: ClassVar[logging.Logger] = logging.getLogger()
-    _ffxivhandler: FFXIVHandler
-
+class FFXIVPlaceName(FFXIVObject):
     id: int
     name: str
     name_no_article: str
 
-    def __init__(self, data: XIVFishingSpotTyped) -> None:
-        self._ffxivhandler = FFXIVHandler.get_handler()
-        setattr(self, "_raw", data)
-
+    def __init__(self, data: XIVPlaceNameTyped) -> None:
+        super().__init__(data=data)
+        self._repr_keys = ["id", "name"]
         for key, value in data.items():
             setattr(self, key, value)
 
-    def __str__(self) -> str:
-        return self.__repr__()
 
-    def __repr__(self) -> str:
-        return f"\n{self.__class__.__name__}" + "\n".join([
-            f"{e}: {getattr(self, e)}" for e in sorted(self.__dict__) if e.startswith("_") is False
-        ])
+class FFXIVInventoryItem(FFXIVObject):
+    """
+    Represents an item from a parsed Allagon Tools Inventory CSV file.
+
+    Attributes
+    -----------
+    name: :class:`str`
+        The name of the item.
+    id: :class:`int`
+        The ID of the item.
+    quality: :class:`ItemQualityEnum`
+        The quality of the item, either HQ or NQ.
+    quantity: :class:`int`
+        The number of said item from the CSV data.
+    source: :class:`str`
+        Who has the item, typically a character, retainer or FC name.
+    location: :class:`InventoryLocationEnum`
+        What type of inventory the item is located, such as Bag, Saddlebag, Glamour chest...
+    """
+
+    name: str
+    id: int
+    quality: ItemQualityEnum
+    quantity: int
+    source: str
+    location: InventoryLocationEnum
+
+    __slots__ = (
+        "id",
+        "location",
+        "name",
+        "quality",
+        "quantity",
+        "source",
+    )
+
+    def __init__(self, item_id: int, data: AllagonToolsInventoryCSVTyped) -> None:
+        setattr(self, "id", item_id)
+        for key, value in data.items():
+            if key.lower() == "type":
+                if isinstance(value, str) and value.lower() == "nq":
+                    setattr(self, "quality", ItemQualityEnum.NQ)
+                elif isinstance(value, str) and value.lower() == "hq":
+                    setattr(self, "quality", ItemQualityEnum.HQ)
+            elif key.lower().startswith("total_quantity"):
+                setattr(self, "quantity", value)
+            elif key.lower() == "inventory_location" and isinstance(value, str):
+                setattr(self, "location", self.convert_inv_loc_to_enum(location=value))
+            elif key.lower() in self.__slots__:
+                setattr(self, key, value)
+            else:
+                continue
+
+    @staticmethod
+    def convert_inv_loc_to_enum(location: str) -> InventoryLocationEnum:
+        """
+        Convert a provided location string from the Allagon Tools CSV into a :class:`InventoryLocationEnum`.
+
+        Parameters
+        -----------
+        location: :class:`str`
+            The inventory location string.
+
+        Returns
+        --------
+        :class:`InventoryLocationEnum`
+            The converted inventory location as an Enum.
+        """
+        if location.lower().startswith("bag"):
+            return InventoryLocationEnum.bag
+        elif location.lower().startswith("glamour"):
+            return InventoryLocationEnum.armoire
+        elif location.lower().startswith("saddlebag"):
+            if location.lower().startswith("premium"):
+                if "left" in location.lower():
+                    return InventoryLocationEnum.premium_saddlebag_left
+                else:
+                    return InventoryLocationEnum.premium_saddlebag_right
+            else:
+                if "left" in location.lower():
+                    return InventoryLocationEnum.saddlebag_left
+                else:
+                    return InventoryLocationEnum.saddlebag_right
+        elif location.lower().startswith("armory"):
+            return InventoryLocationEnum.armory
+        elif location.lower().startswith("market"):
+            return InventoryLocationEnum.market
+        elif location.lower().startswith("free"):
+            return InventoryLocationEnum.free_company
+        elif location.lower().startswith("currency"):
+            return InventoryLocationEnum.currency
+        elif location.lower().startswith("equipped"):
+            return InventoryLocationEnum.equipped_gear
+        elif location.lower().startswith("crystals"):
+            return InventoryLocationEnum.crystals
+        else:
+            return InventoryLocationEnum.null
+
+
+class FF14AnglerLocation(FFXIVObject):
+    pass

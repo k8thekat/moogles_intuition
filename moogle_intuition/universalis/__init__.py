@@ -61,7 +61,8 @@ class UniversalisAPI:
         self.max_api_calls = 20
 
         # These are the "Trimmed" API fields for Universalis Market Results.
-        self.api_trim_item_fields = "&fields=itemID%2Clistings.quantity%2Clistings.worldName%2Clistings.pricePerUnit%2Clistings.hq%2Clistings.total%2Clistings.tax%2Clistings.retainerName%2Clistings.creatorName%2Clistings.lastReviewTime%2ClastUploadTime"
+        self.single_item_fields = "&fields=itemID%2Clistings.quantity%2Clistings.worldName%2Clistings.pricePerUnit%2Clistings.hq%2Clistings.total%2Clistings.tax%2Clistings.retainerName%2Clistings.creatorName%2Clistings.lastReviewTime%2ClastUploadTime"
+        self.multi_item_fields = "&fields=items.itemID%2Citems.listings.quantity%2Citems.listings.worldName%2Citems.listings.pricePerUnit%2Citems.listings.hq%2Citems.listings.total%2Citems.listings.tax%2Citems.listings.retainerName%2Citems.listings.creatorName%2Citems.listings.lastReviewTime%2Citems.lastUploadTime"
 
     def __del__(self) -> None:
         try:
@@ -108,51 +109,118 @@ class UniversalisAPI:
         res: Any = await data.json()
         return res
 
-    async def get_current_data(
+    async def _get_current_data(
         self,
-        items: Union[list[str] | list[int], str | int],
+        item: str | int,
         *,
         world_or_dc: DataCenterEnum | WorldEnum = DataCenterEnum.Crystal,
         num_listings: int = 10,
         num_history_entries: int = 10,
         item_quality: ItemQualityEnum = ItemQualityEnum.NQ,
-        trim_item_fields: bool = True,
+        trim_item_fields: bool = False,
     ) -> CurrentData:
-        # Sanitize the value as a str for usage.
-        if isinstance(items, int):
-            items = str(items)
-        elif isinstance(items, list) and len(items) == 1:
-            items = items[0]
+        """
+        Retrieve the current Marketboard data for the provided item.
 
-        # ? Suggestion
-        # Handle lists over 1k items.
-        if isinstance(items, list):
-            self.logger.debug(
-                "<Universalis.get_current_data>. | Datacenter: %s | Num of Items: %s | Data Type: %s",
-                world_or_dc.name,
-                len(items),
-                type(items),
-            )
-            for e in items:
-                items = ",".join(str(e))
-        else:
-            self.logger.debug(
-                "<Universalis.get_current_data>. | Datacenter: %s | Item: %s | Data Type: %s",
-                world_or_dc.name,
-                items,
-                type(items),
-            )
+        Parameters
+        -----------
+        items: :class:`list[str] | list[int] | str | int`
+            Either a single Item ID or a list of Item IDs in str or int format.
+        world_or_dc: :class:`DataCenterEnum | WorldEnum`, optional
+            The DataCenter or World to query your results for, by default DataCenterEnum.Crystal.
+        num_listings: :class:`int`, optional
+            The number of listing results for the query, by default 10.
+        num_history_entries: :class:`int`, optional
+            The number of history results for the query, by default 10.
+        item_quality: :class:`ItemQualityEnum`, optional
+            The Quality of the Item to query, by default ItemQualityEnum.NQ.
+        trim_item_fields: :class:`bool`, optional
+            If we want to trim the result fields or not, by default True.
+
+        Returns
+        --------
+        :class:`CurrentData`
+            The JSON response converted into a :class:`CurrentData` object.
+        """
+
+        # Sanitize the value as a str for usage.
+        if isinstance(item, int):
+            item = str(item)
+
         api_url: str = (
-            f"{self.base_api_url}/{world_or_dc.name}/{items}?listings={num_listings}&entries={num_history_entries}&hq={item_quality.value}"
+            f"{self.base_api_url}/{world_or_dc.name}/{item}?listings={num_listings}&entries={num_history_entries}&hq={item_quality.value}"
         )
+        # ? Suggestion
+        # A fields class to handle querys.
+        # If we need/want to trim fields.
         if trim_item_fields:
-            api_url += self.api_trim_item_fields
-        self.logger.debug("<Universalis.get_current_data> URL: %s", api_url)
+            api_url += self.single_item_fields
+
         res: CurrentTyped = await self._request(url=api_url)
+        self.logger.debug("<Universalis._get_current_data>. | DC/World: %s | Item ID: %s", world_or_dc.name, item)
+        self.logger.debug("<Universalis._get_current_data> URL: %s | Response:\n%s", api_url, res)
         return CurrentData(data=res)
 
+    async def _get_bulk_current_data(
+        self,
+        items: list[str] | list[int],
+        *,
+        world_or_dc: DataCenterEnum | WorldEnum = DataCenterEnum.Crystal,
+        num_listings: int = 10,
+        num_history_entries: int = 10,
+        item_quality: ItemQualityEnum = ItemQualityEnum.NQ,
+        trim_item_fields: bool = False,
+    ) -> list[CurrentData]:
+        """
+        Retrieves a bulk item search of marketboard data.
+
+        Parameters
+        -----------
+        items: :class:`list[str] | list[int]`
+            A list of Item IDs in str or int format.
+        world_or_dc: :class:`DataCenterEnum | WorldEnum`, optional
+            The DataCenter or World to query your results for, by default DataCenterEnum.Crystal.
+        num_listings: :class:`int`, optional
+            The number of listing results for the query, by default 10.
+        num_history_entries: :class:`int`, optional
+            The number of history results for the query, by default 10.
+        item_quality: :class:`ItemQualityEnum`, optional
+            The Quality of the Item to query, by default ItemQualityEnum.NQ.
+        trim_item_fields: :class:`bool`, optional
+            If we want to trim the result fields or not, by default True.
+
+        Returns
+        --------
+        :class:`list[CurrentData]` | None
+            Returns a list of :class:`CurrentData` of the JSON response if the query succeeds.
+        """
+
+        query: list[str] = []
+        for entry in items:
+            if isinstance(entry, int):
+                query.append(str(entry))
+            else:
+                query.append(entry)
+
+        # ? Suggestion
+        # Handle lists over 100 items.
+        results: list[CurrentData] = []
+        for i in range(0, len(query), 100):
+            api_url: str = f"{self.base_api_url}/{world_or_dc.name}/{','.join(query)}?listings={num_listings}&entries={num_history_entries}&hq={item_quality.value}"
+
+            # If we need/want to trim fields.
+            if trim_item_fields:
+                api_url += self.multi_item_fields
+
+            res: MultiCurrentDataTyped = await self._request(url=api_url)
+            self.logger.debug("<Universalis._get_bulk_current_data>. | DC/World: %s | Num of Items: %s", world_or_dc.name, len(items))
+            self.logger.debug("<Universalis._get_bulk_current_data> URL: %s | Response:\n%s", api_url, res)
+            if res.get("items") is not None:
+                results.extend([CurrentData(data=value) for value in res["items"].values()])
+        return results
+
     # todo - need to finish this command, understand overloads to define return types better
-    async def get_history_data(
+    async def _get_history_data(
         self,
         items: Union[list[str], str],
         data_center: DataCenterEnum = DataCenterEnum.Crystal,
@@ -233,9 +301,10 @@ class UniversalisAPI:
         if key_name in cls._ignored_keys:
             return key_name
 
-        for k, v in cls._pre_formatted_keys.items():
-            if k in key_name:
-                key_name.replace(k, v)
+        # If we find a pre_formatted key structure we want, let's replace the part and then return the rest.
+        for key, value in cls._pre_formatted_keys.items():
+            if key in key_name:
+                key_name = key_name.replace(key, value)
 
         temp: str = key_name[:1].lower()
         for e in key_name[1:]:
@@ -243,6 +312,7 @@ class UniversalisAPI:
                 temp += f"_{e.lower()}"
                 continue
             temp += e
+        cls.logger.debug("<UniversalisAPI.pep8_key_name> key_name: %s | Converted: %s", key_name, temp)
         return temp
 
 
@@ -289,6 +359,16 @@ class CurrentData:
             else:
                 setattr(self, key, value)
 
+    def __getattribute__(self, name: str) -> Any:
+        # Reason this is being done is some values may not exist on the class.
+        if callable(name):
+            return super().__getattribute__(name)
+
+        try:
+            return super().__getattribute__(name)
+        except AttributeError:
+            return None
+
     def __repr__(self) -> str:
         return pformat(vars(self))
 
@@ -328,6 +408,16 @@ class CurrentKeys:
         for key, value in data.items():
             key = UniversalisAPI.pep8_key_name(key_name=key)
             setattr(self, key, value)
+
+    def __getattribute__(self, name: str) -> Any:
+        # Reason this is being done is some values may not exist on the class.
+        if callable(name):
+            return super().__getattribute__(name)
+
+        try:
+            return super().__getattribute__(name)
+        except AttributeError:
+            return None
 
     def __repr__(self) -> str:
         return pformat(vars(self))

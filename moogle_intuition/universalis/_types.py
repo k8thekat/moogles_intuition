@@ -153,3 +153,13 @@ class HistoryTyped(TypedDict, total=False):
     regularSaleVelocity: float | int
     nqSaleVelocity: float | int
     hqSaleVelocity: float | int
+
+
+class MultiCurrentDataTyped(TypedDict):
+    """
+    MultiCurrentData is a representation of a bulk/multi item Universalis query.
+    - The key in items is the `item_id` query'd.
+
+    """
+
+    items: dict[str, CurrentTyped]

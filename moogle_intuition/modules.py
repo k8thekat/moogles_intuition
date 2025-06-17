@@ -2261,17 +2261,70 @@ class FF14AnglerLocation(FFXIVObject):
 
 
 class FF14Soup(bs4.BeautifulSoup):
+    """
+    An overwrite class for `bs4.BeautifulSoup` overwrites, do not build/use.
+    - This alleviates the littered `isinstance()` checks on commonly used functions.
+    """
+
     def __init__(self, *args: Any, session: Optional[aiohttp.ClientSession], **kwargs: Any) -> None:
         self.session: Optional[aiohttp.ClientSession] = session
         super().__init__(*args, **kwargs)
 
     def find(self, name: _FindMethodName = None, *args: Any, **kwargs: _StrainableAttribute) -> Optional[CustomTag]:
-        res = super().find(name=name, *args, **kwargs)
-        if res is not None and isinstance(res, bs4.Tag):
-            return res  # type: ignore
+        """
+        Uses the build in `bs4.BeautifulSoup.find` via `super()` to overwrite the return type into something more manageable.
+        - This `.find()` is the same as `bs4.Tag.find()` and purely for return type overwriting.
+
+        Parameters
+        -----------
+        name: :class:`_FindMethodName`, optional
+            The :class:`str` to search for, by default None.
+        *args: Any
+            Any args to be passed to the `bs4.Tag.find(*args)` function call.
+        **kwargs: _StrainableAttribute
+            Any kwargs to be passed to the `bs4.Tag.find(**kwargs)` function call.
+        Returns
+        --------
+        :class:`Optional[CustomTag]`
+            Returns either `None` or :class:`CustomTag` typed class.
+        """
+        res: Optional[_AtMostOneElement] = super().find(name=name, *args, **kwargs)
+        if res is not None and isinstance(res, CustomTag):
+            return res
 
 
-class CustomTag(FF14Soup):
+class CustomTag(bs4.Tag):
+    """
+    This class is purely for typing overwrites, do not build/use.
+
+    """
+
     @property
     def children(self) -> Iterator[CustomTag]:
-        return super().children  # type: ignore
+        """
+        Overwrites the type from `bs4.Tag` -> `Iterator[PageElement]` into an `Iterator[CustomTag]`.
+        - `super().children` -> Iterate over all direct children of this `PageElement`.
+
+        """
+        return super().children  # pyright: ignore[reportReturnType]
+
+    def find(self, name: _FindMethodName = None, *args: Any, **kwargs: _StrainableAttribute) -> Optional[CustomTag]:
+        """
+        Uses the built in `bs4.Tag.find` via `super()` to overwrite the return type into something more manageable.
+
+        Parameters
+        -----------
+        name: :class:`_FindMethodName`, optional
+            The :class:`str` to search for, by default None.
+        *args: Any
+            Any args to be passed to the `bs4.Tag.find(*args)` function call.
+        **kwargs: _StrainableAttribute
+            Any kwargs to be passed to the `bs4.Tag.find(**kwargs)` function call.
+        Returns
+        --------
+        :class:`Optional[CustomTag]`
+            Returns either `None` or :class:`CustomTag` typed class.
+        """
+        res: Optional[_AtMostOneElement] = super().find(name=name, *args, **kwargs)
+        if res is not None and isinstance(res, CustomTag):
+            return res

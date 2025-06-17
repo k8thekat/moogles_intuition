@@ -522,3 +522,11 @@ class FF14AnglerLocationTyped(TypedDict, total=False):
 class FF14AnglerBaitsTyped(TypedDict):
     name: str
     percent: float
+
+
+class FishingDataTyped(TypedDict):
+    fish_name: str
+    restrictions: list[str]
+    hook_type: Optional[str]
+    double_fish: int
+    baits: dict[int, dict[str, str | int | float]]

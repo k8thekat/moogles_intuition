@@ -9,8 +9,9 @@ from pprint import pformat
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Optional, Union, Unpack, overload
 
 import aiohttp
+import bs4
 from bs4 import BeautifulSoup, Tag
-from bs4.element import NavigableString, PageElement
+from bs4.element import AttributeValueList, NavigableString, PageElement
 from thefuzz import fuzz
 
 from moogle_intuition._types import (
@@ -50,6 +51,7 @@ if TYPE_CHECKING:
         ConvertCSVtoJsonParams,
         FF14AnglerBaitsTyped,
         FF14AnglerLocationTyped,
+        FishingDataTyped,
         GetItemParamsTyped,
         XIVBaseParamTyped,
         XIVClassJobCategoryTyped,
@@ -80,6 +82,9 @@ if TYPE_CHECKING:
         XIVPlaceNameTyped,
         XIVGatheringItemLevelTyped,
     ]
+
+    from bs4._typing import _AtMostOneElement, _AttributeValue, _StrainableAttribute
+    from bs4.element import _FindMethodName
 
 
 __all__ = (
@@ -1411,98 +1416,189 @@ class FFXIVHandler(UniversalisAPI):
             file.close()
         return inventory
 
-    # async def get_ff14angler_data(self, location_id: int) -> FF14AnglerLocationTyped:
-    #     data: bytes = await self.request_file_data("https://en.ff14angler.com/spot/" + str(location_id))
-    #     soup = BeautifulSoup(markup=data, features="html.parser")
+    async def get_fish_data(self, location_id: int) -> Optional[dict[int, FishingDataTyped]]:
+        # data: byes = await
+        fishing_html_data: bytes = await self.request_file_data("https://en.ff14angler.com/spot/" + str(location_id))
+        # fishing_html_data: bytes | Any = resp.content
+        if isinstance(fishing_html_data, bytes) is False:
+            print("FAILED TYPE", type(fishing_html_data))
+            return None
 
-    #     # ID is the ff14 angler fishing ID, each entry is a dictionary containing
-    #     #    name, TackleID->percent, Restrictions
-    #     fishing_data: FF14AnglerLocationTyped = {}
+        soup = FF14Soup(fishing_html_data, "html.parser", session=None)
 
-    #     # get the available fish, skipping headers/etc
-    #     lookup: Optional[PageElement | Tag | NavigableString] = soup.find(class_="info_section list")
-    #     if isinstance(lookup, Tag):
-    #         try:
-    #             possible_fish = list(lookup.children)[5]
-    #             if isinstance(possible_fish, Tag):
-    #                 available_fish = list(possible_fish.children)
-    #             else:
-    #                 raise LookupError
-    #         except IndexError:
-    #             self.logger.error("<%s.get_ff14angler_data()> failed to find possible fish via indexing. | Data: %s", lookup.children)
-    #             raise IndexError
-    #     else:
-    #         self.logger.error("<%s.get_ff14angler_data()> failed class section lookup and or are not the right type: %s", type(lookup))
-    #         raise LookupError
+        # ID is the ff14 angler fishing ID, each entry is a dictionary containing
+        #    name, TackleID->percent, Restrictions
+        fishing_data: dict[int, FishingDataTyped] = {}
 
-    #     # Every other entry is empty, so we use a step of 2.
-    #     for cur_fish_index in range(1, len(available_fish), 2):
-    #         cur_fish = list(available_fish[cur_fish_index].children)
-    #         CurFishIDName = cur_fish[3].find("a")
-    #         CurFishID = int(CurFishIDName.get("href").split("/")[-1])
-    #         CurFishName = list(CurFishIDName.children)[2].strip()
+        # get the available fish, skipping headers/etc
+        info_section: Optional[CustomTag] = soup.find(class_="info_section list")
+        if info_section is None:
+            print("FAILED info_section")
+            return None
 
-    #         CurFishRestrictions = []
-    #         CurFishRestrictionList = cur_fish[5]
-    #         if CurFishRestrictionList.string != None:
-    #             RestrictionString = CurFishRestrictionList.string.strip()
-    #             if len(RestrictionString):
-    #                 CurFishRestrictions.append(RestrictionString.title())
-    #         else:
-    #             for CurFishRestrictionEntry in CurFishRestrictionList.children:
-    #                 if CurFishRestrictionEntry.name == "img":
-    #                     Restriction = CurFishRestrictionEntry.get("title").split(" ")
-    #                     CurFishRestrictions.append((" ".join(Restriction[1:])).title())
-    #                 elif CurFishRestrictionEntry.name == None:
-    #                     RestrictionString = CurFishRestrictionEntry.string.strip()
-    #                     if len(RestrictionString):
-    #                         CurFishRestrictions.append(RestrictionString.title())
+        info_sec_children: list[CustomTag] = list(info_section.children)
 
-    #         CurFishTug = cur_fish[7].find(class_="tug_sec").string.strip()
-    #         CurFishDouble = cur_fish[9].find(class_="strong")
-    #         if CurFishDouble != None:
-    #             CurFishDouble = int(CurFishDouble.string.strip()[1:])
-    #         else:
-    #             CurFishDouble = 0
+        try:
+            # Attempt to index to the fish data, this could fail.
+            poss_fish: CustomTag = info_sec_children[5]
+        except IndexError:
+            print("Index Error poss_fish")
+            return None
+        avail_fish: list[CustomTag] = list(poss_fish.children)
+        for fish_index in range(1, len(avail_fish), 2):
+            cur_fish_page: CustomTag = avail_fish[fish_index]
+            cur_fish: list[CustomTag] = list(cur_fish_page.children)
 
-    #         fishing_data[CurFishID] = {
-    #             "Name": CurFishName,
-    #             "Restrictions": CurFishRestrictions,
-    #             "Tug": CurFishTug,
-    #             "DoubleFish": CurFishDouble,
-    #         }
+            # This could fail with an IndexError
+            try:
+                cur_fish_data: CustomTag = cur_fish[3]
+            except Exception as e:
+                print("EXCEPTION cur_fish_data", type(e))
+                return fishing_data
 
-    #     EffectiveBait = soup.find(id="effective_bait")
-    #     if EffectiveBait:
-    #         EffectiveBait = list(EffectiveBait.children)
+            cur_fish_id_name: Optional[CustomTag] = cur_fish_data.find("a")
+            if cur_fish_id_name is None:
+                return fishing_data
 
-    #         # get the bait IDs and insert them into the data set
-    #         FishIDs = []
-    #         FishEntries = list(EffectiveBait[1].children)
+            poss_cur_fish_id: Optional[_AttributeValue] = cur_fish_id_name.get("href")
+            if poss_cur_fish_id is None or isinstance(poss_cur_fish_id, AttributeValueList):
+                return fishing_data
 
-    #         # all entries have a blank gap, we also skip the first box as
-    #         # it is empty due to the grid design
-    #         for index in range(3, len(FishEntries), 2):
-    #             CurFishEntry = FishEntries[index].find("a")
-    #             CurFishName = CurFishEntry.get("title")
-    #             CurFishID = int(CurFishEntry.get("href").split("/")[-1])
-    #             FishIDs.append(CurFishID)
+            cur_fish_id = int(poss_cur_fish_id.split("/")[-1])
+            # This could break due to an IndexError.
+            try:
+                poss_fish_name: CustomTag = list(cur_fish_id_name.children)[2]
+            except IndexError:
+                print("EXCEPTION cur_fish_name")
+                continue
 
-    #         # now cycle through and grab % values for each fish, similar to the above
-    #         # every other entry is blank
-    #         for bait_index in range(3, len(EffectiveBait), 2):
-    #             CurBaitNumbers = list(EffectiveBait[bait_index].children)
-    #             CurBaitInfo = CurBaitNumbers[0].find("a")
-    #             CurBaitID = int(CurBaitInfo.get("href").split("/")[-1])
-    #             CurBaitName = CurBaitInfo.get("title")
+            if isinstance(poss_fish_name, NavigableString):
+                cur_fish_name: str = poss_fish_name.strip()
+            else:
+                print("FAILED poss_fish_name")
+                continue
 
-    #             for CurBaitIndex in range(2, len(CurBaitNumbers), 2):
-    #                 CurBaitInfo = CurBaitNumbers[CurBaitIndex].find("canvas")
-    #                 if CurBaitInfo:
-    #                     BaitPercent = float(CurBaitInfo.get("value")) / 100
-    #                     CurFishID = FishIDs[int((CurBaitIndex - 2) / 2)]
-    #                     fishing_data[CurFishID][CurBaitID] = {"Name": CurBaitName, "Percent": BaitPercent}
-    #     return fishing_data
+            restriction_list: list[str] = []
+            cur_fish_restrictions: CustomTag = cur_fish[5]
+
+            if cur_fish_restrictions.string != None:
+                restrict_str: str = cur_fish_restrictions.string.strip()
+                if len(restrict_str):
+                    restriction_list.append(restrict_str.title())
+            else:
+                for entry in cur_fish_restrictions.children:
+                    if entry.name == "img":
+                        entry_title: Optional[_AttributeValue] = entry.get("title", None)
+                        if entry_title is None:
+                            print("Failed to get restriction Name")
+                            continue
+                        if isinstance(entry_title, str):
+                            restriction = entry_title.split(" ")
+                            restriction_list.append((" ".join(restriction[1:])).title())
+
+                    # What in the holy fuck is up with their typing..
+                    # I cannot call `entry.name is None`; the rest of the code evals to `Never`... sigh..
+                    elif isinstance(entry, NavigableString) and entry.name is not None and entry.string is not None:
+                        restrict_str = entry.string.strip()
+                        if len(restrict_str):
+                            restriction_list.append(restrict_str.title())
+                    else:
+                        print("FAILED restrict_str", type(entry), entry.name, entry.string)
+                        continue
+
+            # Index Check
+            # Checking Fish Tug information in a new section.
+            try:
+                possible_tug_data: CustomTag = cur_fish[7]
+            except IndexError:
+                print("Failed Index Error `possible_tug_data`")
+                continue
+
+            tug_section: _AtMostOneElement = possible_tug_data.find(class_="tug_sec")
+            cur_fish_tug = None if tug_section is None or tug_section.string is None else tug_section.string.strip()
+
+            # Index check
+            # Checking Fish Double Hook information in a new section.
+            try:
+                cur_fish_double_data: CustomTag = cur_fish[9]
+            except IndexError:
+                print("FAILED Index Error `cur_fish_double_data`")
+                continue
+
+            cur_fish_double_page: Optional[CustomTag] = cur_fish_double_data.find(class_="strong")
+            if cur_fish_double_page is not None and cur_fish_double_page.string != None:
+                cur_fish_double = int(cur_fish_double_page.string.strip()[1:])
+            else:
+                cur_fish_double = 0
+
+            fishing_data[cur_fish_id] = {
+                "fish_name": cur_fish_name,
+                "restrictions": restriction_list,
+                "hook_type": cur_fish_tug,
+                "double_fish": cur_fish_double,
+                "baits": {},
+            }
+
+        effective_bait_header: Optional[CustomTag] = soup.find(id="effective_bait")
+        if effective_bait_header is not None:
+            effective_bait: list[CustomTag] = list(effective_bait_header.children)
+
+            # get the bait IDs and insert them into the data set
+            fish_ids: list[int | float] = []
+            # Could be an Index Error
+            try:
+                poss_entries: CustomTag = effective_bait[1]
+            except IndexError:
+                print("Index Error for `poss_entries`")
+                return fishing_data
+
+            # all entries have a blank gap, we also skip the first box as
+            # it is empty due to the grid design
+            fish_entries: list[CustomTag] = list(poss_entries.children)
+            for index in range(3, len(fish_entries), 2):
+                cur_fish_entry: Optional[CustomTag] = fish_entries[index].find("a")
+                # poss_fish_name: Optional[_AttributeValue] = cur_fish_entry.get("title")
+                if cur_fish_entry is None:
+                    continue
+                poss_fish_id: Optional[_AttributeValue] = cur_fish_entry.get("href")
+                if isinstance(poss_fish_id, str):
+                    cur_fish_id = int(poss_fish_id.split("/")[-1])
+                    fish_ids.append(cur_fish_id)
+
+            # now cycle through and grab % values for each fish, similar to the above
+            # every other entry is blank
+            for bait_index in range(3, len(effective_bait), 2):
+                bait_numbers: list[CustomTag] = list(effective_bait[bait_index].children)
+                try:
+                    bait_info_page: CustomTag = bait_numbers[0]
+                except IndexError:
+                    print("Index Error for `cur_bait_info_page`")
+                    continue
+
+                bait_info: Optional[CustomTag] = bait_info_page.find("a")
+                if bait_info is None:
+                    continue
+                poss_id: Optional[_AttributeValue] = bait_info.get("href", None)
+                if isinstance(poss_id, str):
+                    bait_id = int(poss_id.split("/")[-1])
+                else:
+                    print("FAILED poss_id")
+                    continue
+
+                bait_name: Optional[_AttributeValue] = bait_info.get("title", None)
+                if bait_name is None or isinstance(bait_name, AttributeValueList):
+                    continue
+                for cur_bait_index in range(2, len(bait_numbers), 2):
+                    add_bait_info_header: Optional[CustomTag] = bait_numbers[cur_bait_index].find("canvas")
+                    if add_bait_info_header is None:
+                        continue
+                    page_percent: Optional[_AttributeValue] = add_bait_info_header.get("value")
+                    if isinstance(page_percent, str):
+                        bait_percent = float(page_percent) / 100
+                        # ? This could cause issues in the future if we get floating points instead of whole ints.
+                        cur_fish_id = int(fish_ids[int((cur_bait_index - 2) / 2)])
+                        fishing_data[cur_fish_id]["baits"][bait_id] = {"bait_name": bait_name, "hook_percent": f"{bait_percent:.2f}"}
+        return fishing_data
 
 
 class FFXIVItem(FFXIVObject):
@@ -2162,3 +2258,20 @@ class FFXIVInventoryItem(FFXIVObject):
 
 class FF14AnglerLocation(FFXIVObject):
     pass
+
+
+class FF14Soup(bs4.BeautifulSoup):
+    def __init__(self, *args: Any, session: Optional[aiohttp.ClientSession], **kwargs: Any) -> None:
+        self.session: Optional[aiohttp.ClientSession] = session
+        super().__init__(*args, **kwargs)
+
+    def find(self, name: _FindMethodName = None, *args: Any, **kwargs: _StrainableAttribute) -> Optional[CustomTag]:
+        res = super().find(name=name, *args, **kwargs)
+        if res is not None and isinstance(res, bs4.Tag):
+            return res  # type: ignore
+
+
+class CustomTag(FF14Soup):
+    @property
+    def children(self) -> Iterator[CustomTag]:
+        return super().children  # type: ignore

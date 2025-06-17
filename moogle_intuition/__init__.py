@@ -25,7 +25,7 @@ from __future__ import annotations
 __title__ = "Moogle's Intuition"
 __author__ = "k8thekat"
 __license__ = "GNU"
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 __credits__ = "Universalis, GarlandTools and Square Enix"
 
 from typing import Literal, NamedTuple

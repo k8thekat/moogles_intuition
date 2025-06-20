@@ -1,46 +1,105 @@
 # Scope:
-- *DONE* - Handle CSV data on creation and build all JSON files similar to local.py
+The overarching generalization of what I want `Moogle Intuition` to accomplish.
+
+## Handle CSV data on creation and build all JSON files similar to local.py
     - *DONE* - Build class/function to get or handle the data. (FFXIVHandler)
     - *DONE*- Function to validate JSON or CSV files if not use `asyncio.create_task()` and go retrieve the data.
     - *DONE* - Finish dynamic function to fetch CSV data.
     - *DONE* - Change file names to match URL dict structure for clarity.
     - *DONE* - Add logic for when `.json` file doesn't exist to get data and rebuild as needed.
     - Fix functions for building Enums/etc inside FFXIVHandler
-- *DONE* Full Item lookup by ID or Name: 
+
+## Full Item lookup by ID or Name: 
     - *DONE* Supports partial string matching via Fuzz. 
     - *DONE* Recipe Info
-    - Mapped Attributes to relevant Data + Types
-        - FFXIVHandler
-        - *DONE* - FFXIVJobRecipe
-        - *DONE* - FFXIVRecipe
-        - *DONE* - FFXIVItem
-        - *DONE* - FFXIVRecipeLevel
-        - *DONE* - FFXIVGatheringItem
-        - *DONE* - FFXIVGatheringItemLevel -> XIVGatheringItemLevelTyped
-        - *DONE* - FFXIVFishParameter - text field is returning null occasionally.
-        - *DONE* - FFXIVFishingSpot
-    - *DONE* How to know if an Item can be Fished or Gathered?
+    - How to know if an Item can be Fished or Gathered?
         - *DONE* - Fishing
         - *DONE* - Gatherable
-    - Marketboard/Universalis Interaction:
-        - *DONE* - FFXIVItem - Fetch current Marketboard Information.
-        - *DONE* - FFXIVHandler - Bulk item fetching of current Marketboard Information.
-        - Query Builder class to handle trimming fields.
-        #### Features:
-        - Searching up an Item and see it's cost vs making it.
-            - Sort by least missing ingredients.
-            - Attach Costs to items and or cheapest to "craft".
-    - FF14Angler Integration/Links - Jewell is parsing the HTML
-        - Links -> https://en.ff14angler.com/
-        - Possibly get Lure to Fish % chance.
-    - Garland Tools:
-        - Link -> https://www.garlandtools.org/db/#item/5462
-        - Info
-    - FFXIV Console Games Wiki 
-        - Link -> https://ffxiv.consolegameswiki.com/wiki/FF14_Wiki
-    - *DONE* - FFXIVHandler - Parse Allagon Tools csv file into FFXIVItems.
-        - Prep for Universalis interaction.
-    - FFXIVObject -
-        - *DONE* - Change `__repr__()` function to return useful information vs all.
-        - ? Possibly have pre set key list for each class to display.
+
+## Current Objects:
+The current data structions/class's used to implement the *Scope*.
+
+### FFXIVObject -
+    - *DONE* - Change `__repr__()` function to return useful information vs all.
+    - ? Possibly have pre set key list for each class to display.
+
+### FFXIVHandler
+    - *DONE* - Parsing of CSV into `FFXIVInventoryItem`
+
+### FFXIVItem
+    - 
+
+### FFXIVJobRecipe
+    -
+
+### FFXIVRecipe
+    -
+
+### FFXIVRecipeLevel
+    -
+
+### FFXIVFishParameter
+    - !ISSUE: - text field is returning null occasionally.
+    - Support Spearfishing
+        - https://github.com/xivapi/ffxiv-datamining/blob/master/csv/SpearfishingNotebook.csv
+        - https://github.com/xivapi/ffxiv-datamining/blob/master/csv/SpearfishingItem.csv
+
+### FFXIVFishingSpot
+    Create lookup function/reference for FF14Angler Integration
+        - Support spearfishing
+### FFXIVSpearFishingItem
+    -
+
+### FFXIVSpearFishingNotebook
+    -
+    
+### FFXIVGatheringItem
+    - 
+
+### FFXIVGatheringItemLevel -> XIVGatheringItemLevelTyped
+    -
+
+### FFXIVPlaceName
+    Handles the data of an FFXIV Location ID.
+    - 
+
+### FFXIVInventoryItem
+    Parse Allagon Tools csv file into an object.
+    - Prep for Universalis interaction.
+    - Searching up an Item and see it's cost vs making it.
+        - Sort by least missing ingredients.
+        - Attach Costs to items and or cheapest to "craft".
+
+## Features:
+Additional features and or integration with other platforms.
+
+### Marketboard/Universalis Interaction:
+    - *DONE* - FFXIVItem - Fetch current Marketboard Information.
+    - *DONE* - FFXIVHandler - Bulk item fetching of current Marketboard Information.
+    - Query Builder class to handle trimming fields.
+
+### FF14Angler Integration/Links - Jewell is parsing the HTML
+    - ? Possibly turn this into it's own submodule similar to `Universalis`.
+    - Consider storing fetched data in an array attached to `FFXIVHandler` to prevent multiple web requests.
+    - Links -> https://en.ff14angler.com/
+    
+    - Fetching Location ID information.
+        - *DONE* - Functions to fetch data and parse html.
+        - *DONE* - Get Lure to Fish % chance.
+            - *DONE* - Proper handling of errors and validate operations of functions for data.
+            - *DONE* - Need to Sanitize `location_id` mapping function; remove/replace improper characters. "The <Emphasis>Adventure</Emphasis>"
+        - Need to setup attributes for `FFXIVHandler` and attaching to the `FFXIVItem` or `FFXIVFishParameter` class.
+    - Fetching Fish ID
+        - Create FF14 Fish Name -> ID Map
+        - Get fishing location information by FF14 Fish ID.
+
+### Garland Tools:
+    - Link -> https://www.garlandtools.org/db/#item/[X] - X = `item_id`
+    - Info
+
+### FFXIV Console Games Wiki 
+    - Link -> https://ffxiv.consolegameswiki.com/wiki/FF14_Wiki
+
+
+
 

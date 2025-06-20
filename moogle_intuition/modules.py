@@ -9,9 +9,6 @@ from pprint import pformat
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Optional, Union, Unpack, overload
 
 import aiohttp
-import bs4
-from bs4 import BeautifulSoup, Tag
-from bs4.element import AttributeValueList, NavigableString, PageElement
 from thefuzz import fuzz
 
 from moogle_intuition._types import (
@@ -34,6 +31,7 @@ from ._enums import (
     XIVItemSpecialBonusEnum,
     XIVItemUICategoryEnum,
 )
+from .ff14angler import FF14Angler, FF14Fish, FishingBaits
 from .garland_tools import GarlandAPI
 from .universalis import UniversalisAPI
 from .universalis._enums import ItemQualityEnum
@@ -44,14 +42,12 @@ if TYPE_CHECKING:
     from aiohttp import ClientResponse
     from aiohttp.client import _RequestOptions
 
+    from moogle_intuition.ff14angler._types import FishingDataTyped
     from moogle_intuition.universalis import CurrentData
 
     from ._types import (
         AllagonToolsInventoryCSVTyped,
         ConvertCSVtoJsonParams,
-        FF14AnglerBaitsTyped,
-        FF14AnglerLocationTyped,
-        FishingDataTyped,
         GetItemParamsTyped,
         XIVBaseParamTyped,
         XIVClassJobCategoryTyped,
@@ -66,6 +62,8 @@ if TYPE_CHECKING:
         XIVRecipeLevelTyped,
         XIVRecipeLookUpTyped,
         XIVRecipeTyped,
+        XIVSpearFishingItemTyped,
+        XIVSpearFishingNotebookTyped,
     )
     from .universalis._types import MarketBoardParams
 
@@ -81,10 +79,9 @@ if TYPE_CHECKING:
         AllagonToolsInventoryCSVTyped,
         XIVPlaceNameTyped,
         XIVGatheringItemLevelTyped,
+        XIVSpearFishingItemTyped,
+        XIVSpearFishingNotebookTyped,
     ]
-
-    from bs4._typing import _AtMostOneElement, _AttributeValue, _StrainableAttribute
-    from bs4.element import _FindMethodName
 
 
 __all__ = (
@@ -95,6 +92,7 @@ __all__ = (
 
 # https://github.com/xivapi/ffxiv-datamining/tree/master/csv
 # Used when getting files and using `FFXIVHandler.data_building()`
+# Simply adding the `file_name` key and the remaining fields, the data will be fetched and converted automatically.
 # file_name | convert_pound(bool) | url
 URLS: dict[str, tuple[bool, str]] = {
     "item": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/Item.csv"),
@@ -118,6 +116,11 @@ URLS: dict[str, tuple[bool, str]] = {
     ),
     "fish_parameter": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/FishParameter.csv"),
     "fishing_spot": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/FishingSpot.csv"),
+    "spearfishing_item": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/SpearfishingItem.csv"),
+    "spearfishing_notebook": (
+        True,
+        "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/SpearfishingNotebook.csv",
+    ),
     "class_job": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/ClassJob.csv"),
     "class_job_category": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/ClassJobCategory.csv"),
     "place_name": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/PlaceName.csv"),
@@ -130,7 +133,7 @@ class FFXIVObject:
 
     """
 
-    logger: ClassVar[logging.Logger] = logging.getLogger()
+    logger: ClassVar[logging.Logger] = logging.getLogger(__name__)
     _ffxivhandler: FFXIVHandler
     _raw: DataTypeAliases
     _repr_keys: list[str]
@@ -158,7 +161,7 @@ class FFXIVObject:
         return self.__repr__()
 
     def __repr__(self) -> str:
-        self.logger.debug(pformat(vars(self)))
+        # self.logger.debug(pformat(vars(self)))
         try:
             return f"\n\n__{self.__class__.__name__}__\n" + "\n".join([
                 f"{e}: {getattr(self, e)}" for e in self._repr_keys if e.startswith("_") is False
@@ -169,7 +172,7 @@ class FFXIVObject:
             ])
 
 
-class FFXIVHandler(UniversalisAPI):
+class FFXIVHandler(UniversalisAPI, FF14Angler):
     """
     Our handler type class for interacting with FFXIV Items, Recipes and other Data structures inside of FFXIV.
 
@@ -281,17 +284,30 @@ class FFXIVHandler(UniversalisAPI):
     fish_parameter_dict: dict[int, str]
     fishing_spot_json: dict[str, XIVFishingSpotTyped]
 
+    # Spearfishing Related
+    spearfishing_item_json: dict[str, XIVSpearFishingItemTyped]
+    # This is stored with FLIPPED key to values ("item id" : "Dict Index")
+    spearfishing_item_dict: dict[int, int]
+    spearfishing_notebook_json: dict[str, XIVSpearFishingNotebookTyped]
+
     # Location Information
     place_name_json: dict[str, XIVPlaceNameTyped]
 
     # Marketboard Integration
-    universalis: UniversalisAPI | None
+    universalis: Optional[UniversalisAPI]
 
+    # FF14 Angler Integration
+    ff14angler_loc_map: Optional[dict[str, int]]
+    # This will eventually act like our cache to help reduce web requests for similar data.
+    ff14angler_spot_cache: dict[str, FF14Fish]
+
+    # TODO - Consider using **kwargs and define a type for `Universalis, FF14Angler and GarlandTools`.
     def __init__(self, session: Optional[aiohttp.ClientSession] = None, universalis: Optional[UniversalisAPI] = None) -> None:
         global URLS
         self.data_urls: dict[str, tuple[bool, str]] = URLS
         self.session = session
         self.universalis = universalis
+        # self.ff14angler = FF14AnglerLocation(session=session)
 
     # def __getattribute__(self, name: str) -> Any:
     #     attr = super().__getattribute__(name)
@@ -368,12 +384,19 @@ class FFXIVHandler(UniversalisAPI):
                 cls._instance.generate_reference_dict(file_name="fish_parameter.json", flip_key_value=True, value_get="item")
                 cls._instance.generate_reference_dict(file_name="fishing_spot.json", no_ref_dict=True)
 
+                # Spearfishing related dict/JSON
+                cls._instance.generate_reference_dict(file_name="spearfishing_item.json", flip_key_value=True, value_get="item")
+                cls._instance.generate_reference_dict(file_name="spearfishing_notebook.json", no_ref_dict=True)
+
                 # Gathering related dict/JSON.
                 cls._instance.generate_reference_dict(file_name="gathering_item.json", value_get="item")
                 cls._instance.generate_reference_dict(file_name="gathering_item_level.json", no_ref_dict=True)
 
                 # Location related JSON
                 cls._instance.generate_reference_dict(file_name="place_name.json", no_ref_dict=True)
+
+                # FF14 Angler related dict.
+                cls.ff14angler_loc_map = await cls._instance.get_location_id_mapping()
 
         cls._instance._initialized = True
         return cls.get_handler()
@@ -760,6 +783,38 @@ class FFXIVHandler(UniversalisAPI):
             )
         return FFXIVFishingSpot(data=data)
 
+    def get_spearfishing_spot(self, fishing_record_type: int) -> FFXIVSpearFishingNotebook:
+        """
+        Retrieve any information related to the provided `fishing_record_type` parameter inside our `spearfishing_notebook.json` file.
+
+        Parameters
+        -----------
+        fishing_record_type: :class:`int`
+            The record ID value to look for.
+
+        Returns
+        --------
+        :class:`FFXIVSpearFishingNotebook`
+            The JSON data related to the `fishing_record_type` parameter.
+
+        Raises
+        -------
+        :exc:`ValueError`
+            If the `fishing_record_type` parameter does not exist in the `spearfishing_notebook.json` file..
+        """
+        self.logger.debug(
+            "Searching... Spearfishing Notebook Record ID: %s | Entries: %s",
+            fishing_record_type,
+            len(self.spearfishing_notebook_json),
+        )
+        data: Optional[XIVSpearFishingNotebookTyped] = self.spearfishing_notebook_json.get(str(fishing_record_type), None)
+        if data is None:
+            raise ValueError(
+                "We failed to lookup Spearfishing Notebook Record ID: %s in our spearfishing_notebook.json file",
+                fishing_record_type,
+            )
+        return FFXIVSpearFishingNotebook(data=data)
+
     def get_place_name(self, place_id: int) -> FFXIVPlaceName:
         """
         Retrieve any information related to the provided `place_id` parameter inside our `place_name.json` file.
@@ -794,13 +849,13 @@ class FFXIVHandler(UniversalisAPI):
 
     def _is_fishable(self, item_id: int) -> FFXIVFishParameter:
         """
-        Check's if an Item ID is gatherable via fishing.
+        Check's if an Item ID is gatherable via fishing or spearfishing.
         """
         key: Optional[str] = self.fish_parameter_dict.get(item_id, None)
         self.logger.debug(
             "Searching... Fishing Parameter for Item ID: %s | Entries: %s ",
             item_id,
-            len(self.fish_parameter_json),
+            len(self.fish_parameter_dict),
         )
         if key is None:
             raise ValueError(
@@ -814,6 +869,29 @@ class FFXIVHandler(UniversalisAPI):
             return FFXIVFishParameter(data=data)
         raise ValueError(
             "We failed to lookup Fish Parameter ID: %s in our `self.fishparameter_json` reference.",
+            key,
+        )
+
+    # TODO - Docstring
+    def _is_spearfishing(self, item_id: int) -> FFXIVSpearFishingItem:
+        key: Optional[int] = self.spearfishing_item_dict.get(item_id, None)
+        self.logger.debug(
+            "Searching... Spearfishing Item for Item ID: %s | Entries: %s ",
+            item_id,
+            len(self.spearfishing_item_dict),
+        )
+        if key is None:
+            raise ValueError(
+                "We failed to lookup Item ID: %s in our `self.spearfishing_item_dict` reference.",
+                item_id,
+            )
+        else:
+            data: Optional[XIVSpearFishingItemTyped] = self.spearfishing_item_json.get(str(key), None)
+
+        if data is not None:
+            return FFXIVSpearFishingItem(data=data)
+        raise ValueError(
+            "We failed to lookup Spearfishing Item ID: %s in our `self.spearfishing_item_json` reference.",
             key,
         )
 
@@ -1022,7 +1100,7 @@ class FFXIVHandler(UniversalisAPI):
                         k: str = self.pep8_key_name(key_name=self.sanitize_key_name(key_name=k))
                     else:
                         k: str = self.sanitize_key_name(key_name=k)
-
+                    v: str = self.sanitize_values(value=v)
                     sanitized_data[item][k] = self.convert_values(value=v)
 
             if auto_pep8 is True:
@@ -1037,6 +1115,27 @@ class FFXIVHandler(UniversalisAPI):
                     [self.sanitize_key_name(key_name=i) for i in keys],
                     [self.sanitize_type_name(type_name=i) for i in types],
                 )
+
+    def sanitize_values(self, value: str, _sanitize_values: list[str] = ["<Emphasis>", "</Emphasis>"]) -> str:
+        """
+        Using `.find()` to locate the entry from `_sanitize_values` will use `.replace()` of an empty str `""`.
+
+        Parameters
+        -----------
+        value: :class:`str`
+            The value to sanitize.
+        _sanitize_values: :class:`list[str]`, optional
+            The list of strings to search for and replace with `""`, by default ["<Emphasis>", "</Emphasis>"].
+
+        Returns
+        --------
+        :class:`str`
+            The sanitized string.
+        """
+        for entry in _sanitize_values:
+            if value.find(entry):
+                value = value.replace(entry, "")
+        return value
 
     def sanitize_key_name(self, key_name: str) -> str:
         """
@@ -1262,7 +1361,7 @@ class FFXIVHandler(UniversalisAPI):
         url: :class:`str`
             The url to `.get()`.
         file_name: :class:`str`
-            The file name to write the data to from the url request.
+            The file name to write the data to from the url request, typical extension is `.csv`.
         **kwargs: :class:`Any`
             Any parameters to be passed into the :class:`FFIXVHandler.convert_csv_to_json()` function.
 
@@ -1416,190 +1515,6 @@ class FFXIVHandler(UniversalisAPI):
             file.close()
         return inventory
 
-    async def get_fish_data(self, location_id: int) -> Optional[dict[int, FishingDataTyped]]:
-        # data: byes = await
-        fishing_html_data: bytes = await self.request_file_data("https://en.ff14angler.com/spot/" + str(location_id))
-        # fishing_html_data: bytes | Any = resp.content
-        if isinstance(fishing_html_data, bytes) is False:
-            print("FAILED TYPE", type(fishing_html_data))
-            return None
-
-        soup = FF14Soup(fishing_html_data, "html.parser", session=None)
-
-        # ID is the ff14 angler fishing ID, each entry is a dictionary containing
-        #    name, TackleID->percent, Restrictions
-        fishing_data: dict[int, FishingDataTyped] = {}
-
-        # get the available fish, skipping headers/etc
-        info_section: Optional[CustomTag] = soup.find(class_="info_section list")
-        if info_section is None:
-            print("FAILED info_section")
-            return None
-
-        info_sec_children: list[CustomTag] = list(info_section.children)
-
-        try:
-            # Attempt to index to the fish data, this could fail.
-            poss_fish: CustomTag = info_sec_children[5]
-        except IndexError:
-            print("Index Error poss_fish")
-            return None
-        avail_fish: list[CustomTag] = list(poss_fish.children)
-        for fish_index in range(1, len(avail_fish), 2):
-            cur_fish_page: CustomTag = avail_fish[fish_index]
-            cur_fish: list[CustomTag] = list(cur_fish_page.children)
-
-            # This could fail with an IndexError
-            try:
-                cur_fish_data: CustomTag = cur_fish[3]
-            except Exception as e:
-                print("EXCEPTION cur_fish_data", type(e))
-                return fishing_data
-
-            cur_fish_id_name: Optional[CustomTag] = cur_fish_data.find("a")
-            if cur_fish_id_name is None:
-                return fishing_data
-
-            poss_cur_fish_id: Optional[_AttributeValue] = cur_fish_id_name.get("href")
-            if poss_cur_fish_id is None or isinstance(poss_cur_fish_id, AttributeValueList):
-                return fishing_data
-
-            cur_fish_id = int(poss_cur_fish_id.split("/")[-1])
-            # This could break due to an IndexError.
-            try:
-                poss_fish_name: CustomTag = list(cur_fish_id_name.children)[2]
-            except IndexError:
-                print("EXCEPTION cur_fish_name")
-                continue
-
-            if isinstance(poss_fish_name, NavigableString):
-                cur_fish_name: str = poss_fish_name.strip()
-            else:
-                print("FAILED poss_fish_name")
-                continue
-
-            restriction_list: list[str] = []
-            cur_fish_restrictions: CustomTag = cur_fish[5]
-
-            if cur_fish_restrictions.string != None:
-                restrict_str: str = cur_fish_restrictions.string.strip()
-                if len(restrict_str):
-                    restriction_list.append(restrict_str.title())
-            else:
-                for entry in cur_fish_restrictions.children:
-                    if entry.name == "img":
-                        entry_title: Optional[_AttributeValue] = entry.get("title", None)
-                        if entry_title is None:
-                            print("Failed to get restriction Name")
-                            continue
-                        if isinstance(entry_title, str):
-                            restriction = entry_title.split(" ")
-                            restriction_list.append((" ".join(restriction[1:])).title())
-
-                    # What in the holy fuck is up with their typing..
-                    # I cannot call `entry.name is None`; the rest of the code evals to `Never`... sigh..
-                    elif isinstance(entry, NavigableString) and entry.name is not None and entry.string is not None:
-                        restrict_str = entry.string.strip()
-                        if len(restrict_str):
-                            restriction_list.append(restrict_str.title())
-                    else:
-                        print("FAILED restrict_str", type(entry), entry.name, entry.string)
-                        continue
-
-            # Index Check
-            # Checking Fish Tug information in a new section.
-            try:
-                possible_tug_data: CustomTag = cur_fish[7]
-            except IndexError:
-                print("Failed Index Error `possible_tug_data`")
-                continue
-
-            tug_section: _AtMostOneElement = possible_tug_data.find(class_="tug_sec")
-            cur_fish_tug = None if tug_section is None or tug_section.string is None else tug_section.string.strip()
-
-            # Index check
-            # Checking Fish Double Hook information in a new section.
-            try:
-                cur_fish_double_data: CustomTag = cur_fish[9]
-            except IndexError:
-                print("FAILED Index Error `cur_fish_double_data`")
-                continue
-
-            cur_fish_double_page: Optional[CustomTag] = cur_fish_double_data.find(class_="strong")
-            if cur_fish_double_page is not None and cur_fish_double_page.string != None:
-                cur_fish_double = int(cur_fish_double_page.string.strip()[1:])
-            else:
-                cur_fish_double = 0
-
-            fishing_data[cur_fish_id] = {
-                "fish_name": cur_fish_name,
-                "restrictions": restriction_list,
-                "hook_type": cur_fish_tug,
-                "double_fish": cur_fish_double,
-                "baits": {},
-            }
-
-        effective_bait_header: Optional[CustomTag] = soup.find(id="effective_bait")
-        if effective_bait_header is not None:
-            effective_bait: list[CustomTag] = list(effective_bait_header.children)
-
-            # get the bait IDs and insert them into the data set
-            fish_ids: list[int | float] = []
-            # Could be an Index Error
-            try:
-                poss_entries: CustomTag = effective_bait[1]
-            except IndexError:
-                print("Index Error for `poss_entries`")
-                return fishing_data
-
-            # all entries have a blank gap, we also skip the first box as
-            # it is empty due to the grid design
-            fish_entries: list[CustomTag] = list(poss_entries.children)
-            for index in range(3, len(fish_entries), 2):
-                cur_fish_entry: Optional[CustomTag] = fish_entries[index].find("a")
-                # poss_fish_name: Optional[_AttributeValue] = cur_fish_entry.get("title")
-                if cur_fish_entry is None:
-                    continue
-                poss_fish_id: Optional[_AttributeValue] = cur_fish_entry.get("href")
-                if isinstance(poss_fish_id, str):
-                    cur_fish_id = int(poss_fish_id.split("/")[-1])
-                    fish_ids.append(cur_fish_id)
-
-            # now cycle through and grab % values for each fish, similar to the above
-            # every other entry is blank
-            for bait_index in range(3, len(effective_bait), 2):
-                bait_numbers: list[CustomTag] = list(effective_bait[bait_index].children)
-                try:
-                    bait_info_page: CustomTag = bait_numbers[0]
-                except IndexError:
-                    print("Index Error for `cur_bait_info_page`")
-                    continue
-
-                bait_info: Optional[CustomTag] = bait_info_page.find("a")
-                if bait_info is None:
-                    continue
-                poss_id: Optional[_AttributeValue] = bait_info.get("href", None)
-                if isinstance(poss_id, str):
-                    bait_id = int(poss_id.split("/")[-1])
-                else:
-                    print("FAILED poss_id")
-                    continue
-
-                bait_name: Optional[_AttributeValue] = bait_info.get("title", None)
-                if bait_name is None or isinstance(bait_name, AttributeValueList):
-                    continue
-                for cur_bait_index in range(2, len(bait_numbers), 2):
-                    add_bait_info_header: Optional[CustomTag] = bait_numbers[cur_bait_index].find("canvas")
-                    if add_bait_info_header is None:
-                        continue
-                    page_percent: Optional[_AttributeValue] = add_bait_info_header.get("value")
-                    if isinstance(page_percent, str):
-                        bait_percent = float(page_percent) / 100
-                        # ? This could cause issues in the future if we get floating points instead of whole ints.
-                        cur_fish_id = int(fish_ids[int((cur_bait_index - 2) / 2)])
-                        fishing_data[cur_fish_id]["baits"][bait_id] = {"bait_name": bait_name, "hook_percent": f"{bait_percent:.2f}"}
-        return fishing_data
-
 
 class FFXIVItem(FFXIVObject):
     """
@@ -1702,6 +1617,9 @@ class FFXIVItem(FFXIVObject):
     is_pvp: bool
     sub_stat_category: int
     is_glamourous: bool
+
+    # FF14 Angler
+    _ff14angler_data: Any
 
     def __init__(self, data: XIVItemTyped, session: Optional[aiohttp.ClientSession] = None) -> None:
         super().__init__(data=data)
@@ -1822,7 +1740,7 @@ class FFXIVItem(FFXIVObject):
         return isinstance(other, self.__class__) and self.id < other.id
 
     @property
-    def recipe(self) -> FFXIVJobRecipe | None:
+    def recipe(self) -> Optional[FFXIVJobRecipe]:
         """
         Retrieves the Recipe information related to the item.
 
@@ -1837,19 +1755,29 @@ class FFXIVItem(FFXIVObject):
             return None
 
     @property
-    def fishing(self) -> FFXIVFishParameter | None:
+    def fishing(self) -> Optional[FFXIVFishParameter | FFXIVSpearFishingItem]:
         """
-        Retrieves the Fishing information related to the item.
+        Retrieves the Fishing or Spearfishing information related to the item.
 
         Returns
         --------
-        :class:`FFIXVFishParameter` | None
-            Returns an object representing the Item from fishparameter.json
+        :class:`FFXIVFishParameter | FFXIVSpearFishingItem` | None
+            Returns an object representing the Item from it's respective json file.
         """
+
         try:
-            return self._ffxivhandler._is_fishable(item_id=self.id)
+            fish: Optional[FFXIVFishParameter] = self._ffxivhandler._is_fishable(item_id=self.id)
         except ValueError:
-            return None
+            fish = None
+
+        # This operates under the assumption that a fishable fish cannot be collected via spearfishing too.
+        if fish is None:
+            try:
+                return self._ffxivhandler._is_spearfishing(item_id=self.id)
+            except ValueError:
+                return None
+        else:
+            return fish
 
     @property
     def gathering(self) -> FFXIVGatheringItem | None:
@@ -1866,10 +1794,20 @@ class FFXIVItem(FFXIVObject):
         except ValueError:
             return None
 
+    # TODO - Docstring
+    @property
+    def ff14angler_data(self) -> Any:
+        try:
+            return self._ff14angler_data
+        except AttributeError:
+            return None
+
+    # TODO - Docstring
     @property
     def garland_info(self) -> Any:
         pass
 
+    # TODO - Docstring
     @property
     def mb_current(self) -> Optional[CurrentData]:
         try:
@@ -1877,6 +1815,7 @@ class FFXIVItem(FFXIVObject):
         except AttributeError:
             return None
 
+    # TODO - Docstring
     @property
     def mb_history(self) -> Any:
         pass
@@ -1904,7 +1843,21 @@ class FFXIVItem(FFXIVObject):
         self._mb_current: CurrentData = await universalis._get_current_data(item=self.id, **kwargs)
         return self._mb_current
 
+    # TODO - Docstring
+    async def get_ff14angler_data(self, **kwargs: Any) -> Any:
+        fish: Optional[FFXIVFishParameter | FFXIVSpearFishingItem] = self.fishing
+        if isinstance(fish, FFXIVSpearFishingItem):
+            data: dict[int, FishingDataTyped] | None = await self._ffxivhandler.get_fish_data(
+                location_id=fish.territory_type.ff14angler_location_id
+            )
+            if data is not None:
+                res: FishingDataTyped | None = data.get(self.id)
+                if res is not None:
+                    return FF14Fish(item_id=self.id, data=res)
+        pass
 
+
+# TODO - Docstring
 class FFXIVJobRecipe(FFXIVObject):
     id: int
     CRP: Optional[FFXIVRecipe]  # Recipe
@@ -1928,6 +1881,7 @@ class FFXIVJobRecipe(FFXIVObject):
                 setattr(self, key, value)
 
 
+# TODO - Docstring
 class FFXIVRecipe(FFXIVObject):
     """
     Represents an FFXIV Recipe per XIV Datamining CSV.
@@ -2009,6 +1963,7 @@ class FFXIVRecipe(FFXIVObject):
                 setattr(self, key, value)
 
 
+# TODO - Docstring
 class FFXIVRecipeLevel(FFXIVObject):
     id: int
     class_job_level: int
@@ -2030,6 +1985,7 @@ class FFXIVRecipeLevel(FFXIVObject):
             setattr(self, key, value)
 
 
+# TODO - Docstring
 class FFXIVFishParameter(FFXIVObject):
     text: str
     item: FFXIVItem  # Row
@@ -2061,6 +2017,101 @@ class FFXIVFishParameter(FFXIVObject):
                 setattr(self, key, value)
 
 
+# TODO - Docstring
+class FFXIVSpearFishingItem(FFXIVObject):
+    item: FFXIVItem
+    description: str
+    gathering_item_level: int
+    fishing_record_type: int
+    territory_type: FFXIVSpearFishingNotebook
+    is_visible: bool
+
+    def __init__(self, data: XIVSpearFishingItemTyped) -> None:
+        super().__init__(data=data)
+        self._repr_keys = ["item", "is_visible", "description", "gathering_item_level"]
+        for key, value in data.items():
+            if isinstance(value, int):
+                if key.lower() == "item" and value != 0:
+                    setattr(self, key, self._ffxivhandler.get_item(item_id=value))
+                elif key.lower() == "territory_type" and value != 0:
+                    setattr(self, key, self._ffxivhandler.get_spearfishing_spot(fishing_record_type=value))
+                elif key.lower() == "is_visible":
+                    setattr(self, key, bool(value))
+                else:
+                    setattr(self, key, value)
+            else:
+                setattr(self, key, value)
+
+
+# TODO - Docstring
+class FFXIVSpearFishingNotebook(FFXIVObject):
+    # FF14 Angler website lookup information.
+    ff14angler_location_id: int  # This value comes from `FFXIVHandler.ff14angler_loc_map` dict.
+    ff14angler_url: str  # "https://en.ff14angler.com/spot/{ff14angler_location_id}
+
+    gathering_level: FFXIVGatheringItemLevel
+    is_shadow_node: bool
+    territory_type: int
+    x: int
+    y: int
+    radius: int
+    place_name: FFXIVPlaceName
+    gathering_point_base: int
+
+    def __init__(self, data: XIVSpearFishingNotebookTyped) -> None:
+        super().__init__(data=data)
+        self._repr_keys = ["place_name", "x", "y", "gathering_level", "is_shadow_node"]
+        for key, value in data.items():
+            if isinstance(value, int):
+                if key.lower() == "gathering_level":
+                    setattr(self, key, self._ffxivhandler.get_gathering_level(gathering_level_id=value))
+
+                elif key.lower() == "place_name":
+                    setattr(self, key, self._ffxivhandler.get_place_name(place_id=value))
+                    self.get_ff14angler_location_id()
+
+                elif key.lower() == "is_shadow_node":
+                    setattr(self, key, bool(value))
+                else:
+                    setattr(self, key, value)
+            else:
+                setattr(self, key, value)
+
+    # TODO - Docstring + decide on return type.
+    def get_ff14angler_location_id(self) -> None:
+        if self._ffxivhandler.ff14angler_loc_map is None:
+            if self._ffxivhandler._initialized is True:
+                self.logger.error(
+                    "<%s.get_ff14angler_location_id> failed location_id lookup as the <FFXIVHandler.ff14angler_loc_map> is `None`",
+                    __class__.__name__,
+                )
+                return None
+            else:
+                self.logger.error(
+                    "<%s.get_ff14angler_location_id> failed `location_id` lookup due to <FFXIVHandler> not being initialized.",
+                    __class__.__name__,
+                )
+                return None
+        else:
+            loc_id: Optional[int] = self._ffxivhandler.ff14angler_loc_map.get(self.place_name.name, None)
+            if loc_id is None:
+                self.logger.error(
+                    "<%s.get_ff14angler_location_id> failed lookup by `place_name.name`. | Place Name: %s",
+                    __class__.__name__,
+                    self.place_name.name,
+                )
+                return None
+            else:
+                setattr(self, "ff14angler_location_id", loc_id)
+                setattr(self, "ff14angler_url", "https://en.ff14angler.com/spot/" + str(loc_id))
+
+    # TODO - Docstring + data handling
+    async def get_ff14angler_location_data(self) -> Any:
+        data = await self._ffxivhandler.get_fish_data(location_id=self.ff14angler_location_id)
+        return data
+
+
+# TODO - Docstring
 class FFXIVFishingSpot(FFXIVObject):
     """
     FFXIVFishingSpot _summary_
@@ -2093,6 +2144,10 @@ class FFXIVFishingSpot(FFXIVObject):
     place_name: FFXIVPlaceName  # PlaceName
     order: int
 
+    # FF14 Angler website lookup information.
+    ff14angler_location_id: int  # This value comes from `FFXIVHandler.ff14angler_loc_map` dict.
+    ff14angler_url: str  # "https://en.ff14angler.com/spot/{ff14angler_location_id}
+
     def __init__(self, data: XIVFishingSpotTyped) -> None:
         super().__init__(data=data)
         self._repr_keys = ["id", "gathering_level", "fishing_spot_category", "place_name"]
@@ -2100,16 +2155,54 @@ class FFXIVFishingSpot(FFXIVObject):
             if isinstance(value, int):
                 if key.startswith("item") and value != 0:
                     setattr(self, key, self._ffxivhandler.get_item(item_id=value))
+
                 elif key in ["place_name_main", "place_name_sub", "place_name"]:
                     setattr(self, key, self._ffxivhandler.get_place_name(place_id=value))
+
+                    if key.lower() == "place_name":
+                        setattr(self, "ff14angler_location_id", self.get_ff14angler_location_id())
+
                 elif key.lower() == "fishing_spot_category":
                     setattr(self, key, XIVFishingSpotCategoryEnum(value))
+
                 elif key in ["rare"]:
                     setattr(self, key, bool(value))
             else:
                 setattr(self, key, value)
 
+    # TODO - Docstring + decide on return type.
+    def get_ff14angler_location_id(self) -> Any:
+        if self._ffxivhandler.ff14angler_loc_map is None:
+            if self._ffxivhandler._initialized is True:
+                self.logger.error(
+                    "<%s.get_ff14angler_location_id> failed location_id lookup as the <FFXIVHandler.ff14angler_loc_map> is `None`",
+                    __class__.__name__,
+                )
+            else:
+                self.logger.error(
+                    "<%s.get_ff14angler_location_id> failed `location_id` lookup due to <FFXIVHandler> not being initialized.",
+                    __class__.__name__,
+                )
+        else:
+            loc_id: Optional[int] = self._ffxivhandler.ff14angler_loc_map.get(self.place_name.name, None)
+            if loc_id is None:
+                self.logger.error(
+                    "<%s.get_ff14angler_location_id> failed lookup by `place_name.name`. | Place Name: %s",
+                    __class__.__name__,
+                    self.place_name.name,
+                )
+                return None
+            else:
+                setattr(self, "ff14angler_location_id", loc_id)
+                setattr(self, "ff14angler_url", "https://en.ff14angler.com/spot/" + str(loc_id))
+        pass
 
+    # TODO - Docstring + Data handling
+    def get_ff14angler_location_data(self) -> Any:
+        pass
+
+
+# TODO - Docstring
 class FFXIVGatheringItem(FFXIVObject):
     id: int  # Unsure, could be tied to a Gathering Node/Spot
     item: FFXIVItem  # Row
@@ -2134,6 +2227,7 @@ class FFXIVGatheringItem(FFXIVObject):
                 setattr(self, key, value)
 
 
+# TODO - Docstring
 class FFXIVGatheringItemLevel(FFXIVObject):
     id: int
     gathering_item_level: int
@@ -2145,6 +2239,7 @@ class FFXIVGatheringItemLevel(FFXIVObject):
             setattr(self, key, value)
 
 
+# TODO - Docstring
 class FFXIVPlaceName(FFXIVObject):
     id: int
     name: str
@@ -2254,77 +2349,3 @@ class FFXIVInventoryItem(FFXIVObject):
             return InventoryLocationEnum.crystals
         else:
             return InventoryLocationEnum.null
-
-
-class FF14AnglerLocation(FFXIVObject):
-    pass
-
-
-class FF14Soup(bs4.BeautifulSoup):
-    """
-    An overwrite class for `bs4.BeautifulSoup` overwrites, do not build/use.
-    - This alleviates the littered `isinstance()` checks on commonly used functions.
-    """
-
-    def __init__(self, *args: Any, session: Optional[aiohttp.ClientSession], **kwargs: Any) -> None:
-        self.session: Optional[aiohttp.ClientSession] = session
-        super().__init__(*args, **kwargs)
-
-    def find(self, name: _FindMethodName = None, *args: Any, **kwargs: _StrainableAttribute) -> Optional[CustomTag]:
-        """
-        Uses the build in `bs4.BeautifulSoup.find` via `super()` to overwrite the return type into something more manageable.
-        - This `.find()` is the same as `bs4.Tag.find()` and purely for return type overwriting.
-
-        Parameters
-        -----------
-        name: :class:`_FindMethodName`, optional
-            The :class:`str` to search for, by default None.
-        *args: Any
-            Any args to be passed to the `bs4.Tag.find(*args)` function call.
-        **kwargs: _StrainableAttribute
-            Any kwargs to be passed to the `bs4.Tag.find(**kwargs)` function call.
-        Returns
-        --------
-        :class:`Optional[CustomTag]`
-            Returns either `None` or :class:`CustomTag` typed class.
-        """
-        res: Optional[_AtMostOneElement] = super().find(name=name, *args, **kwargs)
-        if res is not None and isinstance(res, CustomTag):
-            return res
-
-
-class CustomTag(bs4.Tag):
-    """
-    This class is purely for typing overwrites, do not build/use.
-
-    """
-
-    @property
-    def children(self) -> Iterator[CustomTag]:
-        """
-        Overwrites the type from `bs4.Tag` -> `Iterator[PageElement]` into an `Iterator[CustomTag]`.
-        - `super().children` -> Iterate over all direct children of this `PageElement`.
-
-        """
-        return super().children  # pyright: ignore[reportReturnType]
-
-    def find(self, name: _FindMethodName = None, *args: Any, **kwargs: _StrainableAttribute) -> Optional[CustomTag]:
-        """
-        Uses the built in `bs4.Tag.find` via `super()` to overwrite the return type into something more manageable.
-
-        Parameters
-        -----------
-        name: :class:`_FindMethodName`, optional
-            The :class:`str` to search for, by default None.
-        *args: Any
-            Any args to be passed to the `bs4.Tag.find(*args)` function call.
-        **kwargs: _StrainableAttribute
-            Any kwargs to be passed to the `bs4.Tag.find(**kwargs)` function call.
-        Returns
-        --------
-        :class:`Optional[CustomTag]`
-            Returns either `None` or :class:`CustomTag` typed class.
-        """
-        res: Optional[_AtMostOneElement] = super().find(name=name, *args, **kwargs)
-        if res is not None and isinstance(res, CustomTag):
-            return res

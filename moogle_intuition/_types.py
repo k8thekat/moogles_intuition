@@ -511,22 +511,23 @@ class AllagonToolsInventoryCSVTyped(TypedDict):
     inventory_location: str
 
 
-class FF14AnglerLocationTyped(TypedDict, total=False):
-    baits: FF14AnglerBaitsTyped
-    double_fish: int
-    name: str
-    restrictions: list[str]
-    tug_time: str
+class XIVSpearFishingItemTyped(TypedDict):
+    id: int
+    description: str
+    item: int
+    gathering_item_level: int
+    fishing_record_type: int
+    territory_type: int
+    is_visible: bool
 
 
-class FF14AnglerBaitsTyped(TypedDict):
-    name: str
-    percent: float
-
-
-class FishingDataTyped(TypedDict):
-    fish_name: str
-    restrictions: list[str]
-    hook_type: Optional[str]
-    double_fish: int
-    baits: dict[int, dict[str, str | int | float]]
+class XIVSpearFishingNotebookTyped(TypedDict):
+    id: int
+    gathering_level: int
+    is_shadow_node: bool
+    territory_type: int
+    x: int
+    y: int
+    radius: int
+    place_name: int
+    gathering_point_base: int

@@ -1,72 +1,62 @@
+"""Copyright (C) 2021-2025 Katelynn Cadwallader.
+
+This file is part of Moogle's Intuition.
+
+Moogle's Intuition is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 3, or (at your option)
+any later version.
+
+Moogle's Intuition is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public
+License for more details.
+
+You should have received a copy of the GNU General Public License
+along with Moogle's Intuition; see the file COPYING.  If not, write to the Free
+Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA
+02110-1301, USA.
+"""
+
 from __future__ import annotations
 
-from typing import Any, NotRequired, Optional, TypedDict, Union
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
+
+if TYPE_CHECKING:
+    from ff14angler import Angler
+    from universalis import DataCenter, ItemQuality, UniversalisAPI, World
+
+    from .modules import Moogle
 
 
-class ConvertCSVtoJsonParams(TypedDict, total=False):
-    auto_pep8: bool
+class CurMarketBoardParams(TypedDict):
+    world_or_dc: NotRequired[DataCenter | World]
+    num_listings: NotRequired[int]
+    num_history_entries: NotRequired[int]
+    item_quality: NotRequired[ItemQuality]
+    trim_item_fields: NotRequired[bool]
+
+
+class HistMarketBoardParams(TypedDict):
+    world_or_dc: NotRequired[DataCenter | World]
+    num_listings: NotRequired[int]
+    min_price: NotRequired[int]
+    max_price: NotRequired[int]
+    history: NotRequired[int]
+
+
+class CSVParseParams(TypedDict):
+    format_keys: bool
     convert_pound: bool
-    typed_dict: bool
-    typed_file_name: str
 
 
-class FFXIVUserDBTyped(TypedDict):
-    """
-    Our ffxivuser DB structure.
-    """
-
-    id: int
-    discord_id: int
-    guild_id: int
-    home_world: int
-    loc: str
+class ObjectParams(TypedDict):
+    moogle: Moogle
+    universalis: NotRequired[UniversalisAPI]
+    angler: NotRequired[Angler]
 
 
-class FFXIVWatchListDBTyped(TypedDict):
-    """
-    Our watchlist DB structure.
-    """
-
-    universalis_id: int
-    item_id: str
-    price_min: int
-    price_max: int
-    last_check: float
-
-
-class ItemIDFieldsTyped(TypedDict):
-    """
-    Item ID's tied to multiple languages.
-
-    Parameters
-    -----------
-        en,
-        de,
-        ja,
-        fr,
-    """
-
-    en: str
-    de: str
-    ja: str
-    fr: str
-
-
-class ItemIDTyped(TypedDict):
-    """
-    Item IDs
-    """
-
-    itemid: ItemIDFieldsTyped
-
-
-class LocationIDsTyped(TypedDict):
-    id: int
-    name: str
-    alt_name: str
-
-
-class XIVFishParameterTyped(TypedDict):
+class FishParameterData(TypedDict):
     text: str | None
     item: int  # Row
     gathering_item_level: int  # GatheringItemLevelConvertTable
@@ -79,7 +69,7 @@ class XIVFishParameterTyped(TypedDict):
     achievement_credit: int
 
 
-class XIVGatheringItemTyped(TypedDict):
+class GatheringItemData(TypedDict):
     id: int
     item: int  # Row
     gathering_item_level: int  # GatheringItemLevelConvertTable
@@ -87,7 +77,7 @@ class XIVGatheringItemTyped(TypedDict):
     is_hidden: int
 
 
-class XIVItemTyped(TypedDict):
+class ItemData(TypedDict):
     id: int
     singular: str
     adjective: int
@@ -178,7 +168,7 @@ class XIVItemTyped(TypedDict):
     is_glamourous: bool
 
 
-class XIVRecipeTyped(TypedDict):
+class RecipeData(TypedDict):
     id: int  # The Recipe # in RecipeLookUp
     number: int
     craft_type: int  # CraftType
@@ -225,7 +215,7 @@ class XIVRecipeTyped(TypedDict):
     patch_number: int
 
 
-class XIVRecipeLookUpTyped(TypedDict):
+class RecipeLookUpData(TypedDict):
     id: int
     CRP: int  # Recipe
     BSM: int  # Recipe
@@ -237,7 +227,7 @@ class XIVRecipeLookUpTyped(TypedDict):
     CUL: int  # Recipe
 
 
-class XIVRecipeLevelTyped(TypedDict):
+class RecipeLevelData(TypedDict):
     id: int
     class_job_level: int
     stars: int
@@ -252,7 +242,7 @@ class XIVRecipeLevelTyped(TypedDict):
     conditions_flag: int
 
 
-class XIVItemLevelTyped(TypedDict):
+class ItemLevelData(TypedDict):
     id: int
     strength: int
     dexterity: int
@@ -329,7 +319,7 @@ class XIVItemLevelTyped(TypedDict):
     perception: int
 
 
-class XIVClassJobTyped(TypedDict):
+class ClassJobData(TypedDict):
     id: int
     name: str
     abbreviation: str
@@ -368,7 +358,7 @@ class XIVClassJobTyped(TypedDict):
     can_queue_for_duty: bool
 
 
-class XIVClassJobCategoryTyped(TypedDict):
+class ClassJobCategoryData(TypedDict):
     id: int
     name: str
     ADV: bool
@@ -416,7 +406,7 @@ class XIVClassJobCategoryTyped(TypedDict):
     PCT: bool
 
 
-class XIVBaseParamTyped(TypedDict):
+class BaseParamData(TypedDict):
     id: int
     packet_index: int
     name: str
@@ -457,13 +447,13 @@ class XIVBaseParamTyped(TypedDict):
     meld_param12: int
 
 
-class XIVGatheringItemLevelTyped(TypedDict):
+class GatheringItemLevelData(TypedDict):
     id: int
     gathering_item_level: int
     stars: int
 
 
-class XIVFishingSpotTyped(TypedDict):
+class FishingSpotData(TypedDict):
     id: int
     gathering_level: int
     big_fish_on_reach: str
@@ -490,18 +480,18 @@ class XIVFishingSpotTyped(TypedDict):
     order: int
 
 
-class XIVPlaceNameTyped(TypedDict):
+class PlaceNameData(TypedDict):
     id: int
     name: str
     name_no_article: str
 
 
-class GetItemParamsTyped(TypedDict, total=False):
+class GetItemParams(TypedDict, total=False):
     match: int
     limit_results: int
 
 
-class AllagonToolsInventoryCSVTyped(TypedDict):
+class AllagonToolsInventoryCSV(TypedDict):
     favourite: bool
     icon: NotRequired[str]
     name: str
@@ -511,7 +501,7 @@ class AllagonToolsInventoryCSVTyped(TypedDict):
     inventory_location: str
 
 
-class XIVSpearFishingItemTyped(TypedDict):
+class SpearFishingItemData(TypedDict):
     id: int
     description: str
     item: int
@@ -521,7 +511,7 @@ class XIVSpearFishingItemTyped(TypedDict):
     is_visible: bool
 
 
-class XIVSpearFishingNotebookTyped(TypedDict):
+class SpearFishingNotebookData(TypedDict):
     id: int
     gathering_level: int
     is_shadow_node: bool

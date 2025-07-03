@@ -1,28 +1,47 @@
+"""Copyright (C) 2021-2025 Katelynn Cadwallader.
+
+This file is part of Moogle's Intuition.
+
+Moogle's Intuition is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 3, or (at your option)
+any later version.
+
+Moogle's Intuition is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public
+License for more details.
+
+You should have received a copy of the GNU General Public License
+along with Moogle's Intuition; see the file COPYING.  If not, write to the Free
+Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA
+02110-1301, USA.
+"""
+
 from __future__ import annotations
 
 from enum import Enum, IntEnum
 
 __all__ = (
-    "InventoryLocationEnum",
-    "JobEnum",
-    "LocalizationEnum",
-    "SaleTypeEnum",
-    "XIVCraftTypeEnum",
-    "XIVEquipSlotCategoryEnum",
-    "XIVFishingSpotCategoryEnum",
-    "XIVGrandCompanyEnum",
-    "XIVItemSeriesEnum",
-    "XIVItemSpecialBonusEnum",
-    "XIVItemUICategoryEnum",
+    "CraftType",
+    "EquipSlotCategory",
+    "FishingSpotCategory",
+    "GrandCompany",
+    "InventoryLocation",
+    "ItemSeries",
+    "ItemSpecialBonus",
+    "ItemUICategory",
+    "Jobs",
+    "Localization",
+    "SaleType",
 )
 
 
-class InventoryLocationEnum(IntEnum):
-    """
-    Enum for specifying Item Location in relation to the in game world.
+class InventoryLocation(IntEnum):
+    """Enum for specifying Item Location in relation to the in game world.
 
     Parameters
-    -----------
+    ----------
         NULL = 0 |
         BAG = 1 |
         MARKET = 2 |
@@ -37,6 +56,7 @@ class InventoryLocationEnum(IntEnum):
         CRYSTALS = 11 |
         CURRENCY = 12 |
         ARMOIRE = 13 | This is from Allagon Tools Inventory exports
+
     """
 
     null = 0
@@ -55,19 +75,19 @@ class InventoryLocationEnum(IntEnum):
     armoire = 13
 
 
-class LocalizationEnum(Enum):
+class Localization(Enum):
     en = "en"
     de = "de"
     ja = "ja"
     fr = "fr"
 
 
-class SaleTypeEnum(Enum):
+class SaleType(Enum):
     aggregated = 0
     history = 1
 
 
-class JobEnum(Enum):
+class Jobs(Enum):
     gladiator = 1
     pugilist = 2
     marauder = 3
@@ -112,7 +132,7 @@ class JobEnum(Enum):
     pictomancer = 42
 
 
-class XIVCraftTypeEnum(Enum):
+class CraftType(Enum):
     Carpenter = 0
     Blacksmith = 1
     Armorer = 2
@@ -123,7 +143,7 @@ class XIVCraftTypeEnum(Enum):
     Culinarian = 7
 
 
-class XIVItemUICategoryEnum(Enum):
+class ItemUICategory(Enum):
     Pugilists_Arm = 1
     Gladiators_Arm = 2
     Marauders_Arm = 3
@@ -238,7 +258,8 @@ class XIVItemUICategoryEnum(Enum):
     Outfits = 112
 
 
-class XIVEquipSlotCategoryEnum(Enum):
+class EquipSlotCategory(Enum):
+    UNK = 0
     MainHand = 1
     OffHand = 2
     Head = 3
@@ -261,13 +282,13 @@ class XIVEquipSlotCategoryEnum(Enum):
     Body_NoGloves = 22
 
 
-class XIVGrandCompanyEnum(Enum):
+class GrandCompany(Enum):
     Maelstorm = 1
     Order_of_the_Twin_Adder = 2
     Immortal_Flames = 3
 
 
-class XIVItemSeriesEnum(Enum):
+class ItemSeries(Enum):
     Pugilists_Arm = 1
     Gladiators_Arm = 2
     Marauders_Arm = 3
@@ -382,7 +403,7 @@ class XIVItemSeriesEnum(Enum):
     Outfits = 112
 
 
-class XIVItemSpecialBonusEnum(Enum):
+class ItemSpecialBonus(Enum):
     UNK = 1
     Set_Bonus_ = 2
     Sanction_ = 4
@@ -391,7 +412,7 @@ class XIVItemSpecialBonusEnum(Enum):
     Save_the_Queen_Area_Effect = 8
 
 
-class XIVFishingSpotCategoryEnum(Enum):
+class FishingSpotCategory(Enum):
     UNK = 0
     Ocean = 1
     Freshwater = 2

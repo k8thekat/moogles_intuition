@@ -1,10 +1,7 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
 
 [project]
 name = "moogle_intuition"
-dynamic = ["version", "dependencies"]
+dynamic = ["version"]
 authors = [
     { name = "k8thekat", email = "Cadwalladerkatelynn@gmail.com" },
 ]
@@ -26,53 +23,44 @@ classifiers = [
     "Typing :: Typed",
 ]
 keywords = ["moogle_intuition", "ffxiv", "datamining", "universalis", "garland tools"]
+dependencies = [
+    "beautifulsoup4>=4.13.4",
+    "garlandtools>=2.0.1",
+    "thefuzz>=0.22.1",
+    "universalis",
+]
 [project.urls]
-GitHub = "https://github.com/k8thekat/FreshDeskAPI"
-
-[tool.setuptools.dynamic]
-dependencies = { file = "requirements.txt" }
-version = { attr = "moogle_intuition.__version__" }
-
-[tool.setuptools]
-packages = ["moogle_intuition"]
-include-package-data = true
+GitHub = "https://github.com/k8thekat/moogles_intuition"
 
 [tool.ruff]
 target-version = "py312"
 line-length = 140
 
 [tool.ruff.lint]
-exclude = ["docs/extensions/*.py", "logs"]
-select = [
-    "A",
-    "C4",
-    "F",
-    "G",
-    "I",
-    "PTH",
-    "RUF",
-    "SIM",
-    "TC",
-    "UP",
-    "W",
-    "PERF",
-    "ANN",
-]
+select = ["ALL"]
 ignore = [
+    "ANN401",
+    "C901", # Too complex functions.
+    "D401", # Ignore "Imperative Mood" statement for docstrings.
+    "ERA001", #Ignore commented out code.
+    "FIX002", # Ignore TODO's telling you to "fix them".
     "F401",
     "F402",
     "F403",
     "F405",
     "PERF203",
+    "PLR",
     "RUF001",
+    "RUF002", # The character U+2013 "–" could be confused with the ASCII character U+002d "-", which is more common in source code.
+    "RUF003", # The character U+2013 "–" could be confused with the ASCII character U+002d "-", which is more common in source code, this is for "COMMENTS"
     "RUF009",
+    "RUF052", # for filtering "local dummy variable is accessed" eg. - vars using `_`
     "SIM105",
+    "SLF001", # private function/attribute usage outside of the class it was defined.
+    "TD003", # Ignore TODO's not having a link/url to an issue.
+    "UP007",
     "UP034",
     "UP038",
-    "UP007",
-    "ANN401",
-    "RUF052", # for filtering "local dummy variable is accessed" eg. - vars using `_`
-    "RUF002", # The character U+2013 "–" could be confused with the ASCII character U+002d "-", which is more common in source code. 
     "UP045", # Type var `Optional[X]` vs `X | None`
 ]
 
@@ -89,8 +77,26 @@ mark-parentheses = false
 parametrize-names-type = "tuple"
 
 [tool.pyright]
-useLibraryCodeForTypes = true
-typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "strict"
 pythonVersion = "3.12"
+exclude = ["logs/**", "**/.venv/**", "**/.vscode-server/", "/usr/*"]
+include = ["moogle_intuition"]
+useLibraryCodeForTypes = true
 reportIncompatibleMethodOverride = false
-exclude = ["logs/**", "**/.venv/**"]
+reportPrivateUsage = false # I do this because of using lot's of functions for data handling inside of `Moogle`.
+
+[tool.setuptools]
+packages = ["moogle_intuition"]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = { attr = "moogle_intuition.__version__" }
+
+[tool.uv.sources]
+universalis = { git = "https://github.com/k8thekat/UniversalisAPI_wrapper" }
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

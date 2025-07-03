@@ -1,8 +1,6 @@
-# ruff: noqa
-"""
-Copyright (C) 2021-2024 Katelynn Cadwallader.
+"""Copyright (C) 2021-2025 Katelynn Cadwallader.
 
-This file is part of Kuma Kuma.
+This file is part of Moogle's Intuition.
 
 Moogle's Intuition is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -25,23 +23,21 @@ from __future__ import annotations
 __title__ = "Moogle's Intuition"
 __author__ = "k8thekat"
 __license__ = "GNU"
-__version__ = "3.0.0"
+__version__ = "4.0.0"
 __credits__ = "Universalis, GarlandTools and Square Enix"
 
 from typing import Literal, NamedTuple
-from .modules import *
+
 from ._enums import *
-from .universalis import *
-# from .garland_tools import *
+from .ff14angler import *
+from .modules import *
 
 
-class VersionInfo(NamedTuple):
-    Major: int
-    Minor: int
-    Revision: int
-    releaseLevel: Literal["alpha", "beta", "pre-release", "release", "development"]
+class VersionInfo(NamedTuple):  # noqa: D101
+    major: int
+    minor: int
+    revision: int
+    release_level: Literal["alpha", "beta", "pre - release", "release", "development"]
 
 
-version_info: VersionInfo = VersionInfo(Major=3, Minor=0, Revision=0, releaseLevel="development")
-
-del NamedTuple, Literal, VersionInfo
+version_info: VersionInfo = VersionInfo(major=4, minor=0, revision=0, release_level="development")

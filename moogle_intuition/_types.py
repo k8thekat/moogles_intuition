@@ -23,8 +23,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 if TYPE_CHECKING:
+    from async_universalis import DataCenter, ItemQuality, UniversalisAPI, World
     from ff14angler import Angler
-    from universalis import DataCenter, ItemQuality, UniversalisAPI, World
 
     from .modules import Moogle
 

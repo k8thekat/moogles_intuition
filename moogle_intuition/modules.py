@@ -31,8 +31,8 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal, NamedTuple, Optional, 
 
 import aiohttp
 from async_garlandtools import GarlandToolsAsync, IconType, Object as GTObject
+from async_universalis import CurrentData, HistoryData, ItemQuality, UniversalisAPI
 from thefuzz import fuzz  # type: ignore[reportMissingStubFile]
-from universalis import CurrentData, HistoryData, ItemQuality, UniversalisAPI
 
 from moogle_intuition.errors import MoogleLookupError
 from moogle_intuition.ff14angler._types import FishingData
@@ -47,7 +47,7 @@ if TYPE_CHECKING:
     from aiohttp import ClientResponse
     from aiohttp.client import _RequestOptions as AiohttpRequestOptions  # pyright: ignore[reportPrivateUsage]
     from async_garlandtools._types import ItemResponse, TradeShops
-    from universalis import CurrentData, CurrentDataEntries, DataCenter, HistoryData, HistoryDataEntries, World
+    from async_universalis import CurrentData, CurrentDataEntries, DataCenter, HistoryData, HistoryDataEntries, World
 
     from moogle_intuition.ff14angler._types import FishingData
 

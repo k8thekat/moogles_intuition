@@ -30,8 +30,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, NamedTuple, Optional, Self, Union, Unpack, overload
 
 import aiohttp
-from async_garlandtools import GarlandToolsAsync
-from async_garlandtools._types import ItemResponse
+from async_garlandtools import GarlandToolsAsync, IconType, Object as GTObject
 from thefuzz import fuzz  # type: ignore[reportMissingStubFile]
 from universalis import CurrentData, HistoryData, ItemQuality, UniversalisAPI
 
@@ -2024,6 +2023,21 @@ class Item(Object):
         """
         self._garlandtools_data = await self._moogle._garlandtools.item(item_id=self.id)
         return self._garlandtools_data
+
+    async def get_icon(self) -> Optional[GTObject]:
+        """Retrieves the GarlandTools API data for this items FFXIV Icon.
+
+        Returns
+        -------
+        :class:`Optional[GTObject]`
+            A GarlandTools API Object.
+
+        """
+        if self._garlandtools_data is not None:
+            icon_id: int = self._garlandtools_data["item"]["icon"]
+            res: GTObject = await self._moogle._garlandtools.icon(icon_id=icon_id, icon_type=IconType.item)
+            return res
+        return None
 
 
 class JobRecipe(Object):

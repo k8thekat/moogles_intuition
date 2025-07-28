@@ -27,7 +27,7 @@ dependencies = [
     "async-garlandtools>=0.1.3.dev0",
     "beautifulsoup4>=4.13.4",
     "thefuzz>=0.22.1",
-    "universalis",
+    "universalis>=2.0.2.dev0",
 ]
 [project.urls]
 GitHub = "https://github.com/k8thekat/moogles_intuition"
@@ -95,7 +95,7 @@ include-package-data = true
 version = { attr = "moogle_intuition.__version__" }
 
 [tool.uv.sources]
-universalis = { git = "https://github.com/k8thekat/UniversalisAPI_wrapper", branch = "development" }
+universalis = { git = "https://github.com/k8thekat/UniversalisAPI_wrapper", rev = "development" }
 
 [build-system]
 requires = ["setuptools>=61.0"]

@@ -7,10 +7,11 @@ import sys
 
 # Unique information for the project.
 user = "k8thekat"
-project: str = "project_name"
-project_dir: pathlib.Path = pathlib.Path().joinpath("project_sub_dir")
+gitHub_repo_name: str = "moogles_intuition"
+project_name: str = "moogle_intuition"
+project_dir: pathlib.Path = pathlib.Path().joinpath(project_name)
 project_branch: str = "development"
-repo_url = f"https://github.com/k8thekat/{project}"
+repo_url = f"https://github.com/k8thekat/{gitHub_repo_name}"
 
 # New Repo Initialization only.
 _flag: bool = False
@@ -22,11 +23,11 @@ if _ignore is True:  # pyright: ignore[reportUnnecessaryComparison] # Purely for
 
 # Grab Version from __init__.py
 version = ""
-with Path().parent.parent.parent.parent.joinpath("project_sub_dir/__init__.py").open() as file:
+with Path().parent.parent.parent.parent.joinpath(f"{project_name}/__init__.py").open() as file:
     version = re.search(r'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]', file.read(), re.MULTILINE).group(1)  # type:ignore
 
 if not version:
-    raise RuntimeError("version is not set")
+    raise RuntimeError("Version is not set")
 
 
 cl_file: pathlib.Path = pathlib.Path().parent.parent.parent.parent.joinpath("CHANGELOG.md")
@@ -51,7 +52,7 @@ if cl_ver == "0.0.0":
 # Compare CHANGELOG.md and __init__.py Versions.
 if _flag is False and (not version or cl_ver == version):
     msg = "<%s> | Version has not been updated `%s`: %s == `CHANGELOG.md`: %s"
-    raise ValueError(msg, "Changelog Generator", project, version, cl_ver)
+    raise ValueError(msg, "Changelog Generator", gitHub_repo_name, version, cl_ver)
 
 
 def gitHub_commit() -> None:
@@ -147,12 +148,10 @@ def gitHub_initial_commit() -> None:
 
 def update_changelog(version: str, new_commit: str, files: dict[str, list[str]]) -> None:
     # Format the data into the `CHANGELOG.md`
-    set_version = f"## Version - {version} - [{new_commit[:7]}]({repo_url}/commit/{new_commit})\n"
-    # add_changelog: str = f"#### CHANGELOG.md\n- Version info from `{cl_ver}` added.\n\n"
-    # add_init: str = f"#### Version bump to `{version}`\n\n"
+    set_version = f"# Version - {version} - [{new_commit[:7]}]({repo_url}/commit/{new_commit})\n"
     data = set_version
     for file_name, file_changes in files.items():
-        data: str = data + "#### " + file_name + "\n" + "\n".join(file_changes) + "\n\n"
+        data: str = data + "## " + file_name + "\n" + "\n".join(file_changes) + "\n\n"
 
     data = data + changelog_data
     with cl_file.open("r+", encoding="utf-8") as changelog:

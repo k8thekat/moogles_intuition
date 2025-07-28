@@ -21,20 +21,24 @@ Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA
 from __future__ import annotations
 
 import csv
+import datetime
 import json
 import logging
+import statistics
 from io import TextIOWrapper
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, Optional, Self, Union, Unpack, overload
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, NamedTuple, Optional, Self, Union, Unpack, overload
 
 import aiohttp
+from async_garlandtools import GarlandToolsAsync
+from async_garlandtools._types import ItemResponse
 from thefuzz import fuzz  # type: ignore[reportMissingStubFile]
 from universalis import CurrentData, HistoryData, ItemQuality, UniversalisAPI
 
 from moogle_intuition.errors import MoogleLookupError
 from moogle_intuition.ff14angler._types import FishingData
 
-from ._enums import CraftType, EquipSlotCategory, FishingSpotCategory, InventoryLocation
+from ._enums import CraftType, Currency, EquipSlotCategory, FishingSpotCategory, InventoryLocation
 from .ff14angler import Angler, AnglerBaits, AnglerFish
 
 if TYPE_CHECKING:
@@ -43,6 +47,8 @@ if TYPE_CHECKING:
 
     from aiohttp import ClientResponse
     from aiohttp.client import _RequestOptions as AiohttpRequestOptions  # pyright: ignore[reportPrivateUsage]
+    from async_garlandtools._types import ItemResponse, TradeShops
+    from universalis import CurrentData, CurrentDataEntries, DataCenter, HistoryData, HistoryDataEntries, World
 
     from moogle_intuition.ff14angler._types import FishingData
 
@@ -85,6 +91,7 @@ __all__ = ("ATOOLS_OMIT_INV_LOCS", "IGNORED_KEYS", "PRE_FORMATTED_KEYS", "URLS",
 
 LOGGER = logging.getLogger(__name__)
 DATA_PATH: Path = Path(__file__).parent.joinpath("xiv_datamining")
+
 
 PRE_FORMATTED_KEYS: dict[str, str] = {
     "ItemID": "item_id",
@@ -839,7 +846,6 @@ class Builder(Generic):
             temp.append(f"    {key_value} = {key}")
         return "\n".join(temp)
 
-    # TODO(@k8thekat): - Better docstring.. explaniation is.. bad.
     async def to_enum(
         self,
         value_get: str,
@@ -910,7 +916,7 @@ class Builder(Generic):
             )
 
 
-class Moogle(Generic):
+class Moogle(Generic, GarlandToolsAsync):
     """Our handler type class for interacting with FFXIV Items, Recipes and other Data structures from XIV Datamining."""
 
     _builder: Builder
@@ -925,6 +931,8 @@ class Moogle(Generic):
     _angler_invert_loc_map: Optional[dict[int, str]]
     _angler_fish_map: Optional[dict[str, int]]
 
+    _garlandtools: GarlandToolsAsync
+
     _items_cache: dict[str, Item]
 
     def __init__(
@@ -932,6 +940,7 @@ class Moogle(Generic):
         session: Optional[aiohttp.ClientSession] = None,
         universalis: Optional[UniversalisAPI] = None,
         angler: Optional[Angler] = None,
+        garlandtools: Optional[GarlandToolsAsync] = None,
     ) -> None:
         """Build your Moogle Intuition~.
 
@@ -943,6 +952,8 @@ class Moogle(Generic):
             A pre-existing `<universalis.UniversalisAPI>` object if applicable, by default None.
         angler: :class:`Optional[Angler]`, optional
             A pre-existing `<ff14angler.Angler>` object if applicable, by default None.
+        garlandtools: :class:`Optional[GarlandToolsAsync]`, optional
+            A pre-existing `<async_garlandtools.GarlandToolsAsync>` object if applicable, by default None.
 
         """
         self._builder = Builder(session=session)
@@ -952,6 +963,9 @@ class Moogle(Generic):
 
         if angler is None:
             self._angler = Angler(session=session)
+
+        if garlandtools is None:
+            self._garlandtools = GarlandToolsAsync(session=session, cache_location=Path(__file__).parent)
 
         # Create our empty itemcache.
         self._items_cache = {}
@@ -980,6 +994,7 @@ class Moogle(Generic):
         await self._universalis.clean_up()
         await self._builder.clean_up()
         await self._angler.clean_up()
+        await self._garlandtools.close()
 
     async def build(self) -> Self:
         """Builds the required arrays and library's for `<Moogle>` to function.
@@ -1233,9 +1248,8 @@ class Moogle(Generic):
             len(self._gathering_item_levels),
         )
         data: Optional[DataTypeAliases] = self._gathering_item_levels.get(str(level_id), None)
-        # TODO(@k8thekat): - In theory all 3 dict key values are present to build GatheringItemLevel object.
-        # so I am unsure WHAT or Why it's complaining.
-        if data is None or ("id" not in data and "stars" not in data and "gathering_item_level" not in data):
+
+        if data is None or ("id" not in data or "stars" not in data or "gathering_item_level" not in data):
             raise MoogleLookupError(str(level_id), "level_id", "_get_gathering_level", self)
         return GatheringItemLevel(data=data, moogle=self)
 
@@ -1325,12 +1339,82 @@ class Moogle(Generic):
             raise MoogleLookupError(str(item_id), "item_id", "_is_gatherable", self)
         data: Optional[DataTypeAliases] = self._gathering_items.get(str(key), None)
 
-        # TODO(@k8thekat): - In theory the key values are present to build GatheringItem object.
-        # so I am unsure WHAT or Why it's complaining.
-        # Only FishParameter has the key `achievement_credit`; so checking FOR that key should validate the data.
-        if data is None or ("achievement_credit" in data and "quest" in data):
+        if data is None or ("gathering_item_level" not in data or "quest" not in data or "is_hidden" not in data):
             raise MoogleLookupError(str(key), "item_id", "_is_gatherable", self)
         return GatheringItem(data=data, moogle=self)
+
+    def _parse_atools_csv(
+        self,
+        data: bytes | str,
+        *,
+        omit_item_names: Optional[list[str]] = None,
+        omit_inv_locs: Optional[list[InventoryLocation]] = None,
+    ) -> list[InventoryItem]:
+        r"""Parse a Allagon Tools Inventory CSV.
+
+        Take's the `bytes` or `str` array and returns a list of :class:`FFXIVInventoryItem`.
+        - These objects are a smaller reference of :class:`FFXIVItem` as they contain character specific information.
+
+        Parameters
+        ----------
+        data: :class:`bytes | str `
+            The source of the CSV file data. This assumes the data structure of the CSV file is using `\n` as a seperator for rows.
+        omit_inv_locs: :class:`Optional[list[InventoryLocationEnum]]`, optional
+            The inventory location of the item to omit from our returned list, by default is None.
+            - If `None`, will use the global `ATOOLS_OMIT_INV_LOCS`.
+        omit_item_names: :class:`Optional[list[str]]`, optional
+            Any item names to omit such as `Free Company Credits` as it's not apart of the XIV Item.json, by default [].
+            - If `None`, will use the global `ATOOLS_OMIT_ITEM_NAMES`.
+
+        Returns
+        -------
+        :class:`list[FFXIVInventoryItem]`
+            Returns a list of converted CSV data into FFXIVInventoryItem.
+
+        """
+        if isinstance(data, bytes):
+            data = data.decode(encoding="utf-8")
+        keys = data.split("\n")[0]
+        file = data
+
+        if omit_inv_locs is None:
+            omit_inv_locs = ATOOLS_OMIT_INV_LOCS
+
+        if omit_item_names is None:
+            omit_item_names = ATOOLS_OMIT_ITEM_NAMES
+
+        # Keys= "Favorite?", "Icon", "Name", "Type", "Total Quantity Available", "Source", "Inventory Location"
+        # We know the structure of res to be Iterator[AllagonToolsInventoryCSV].
+        _keys: list[str] = keys.strip().replace("?", "").lower().replace(" ", "_").split(",")
+        res: Iterator[AllagonToolsInventoryCSV] = csv.DictReader(file, fieldnames=_keys)  # type: ignore[reportAssignmentType]
+        LOGGER.debug(
+            "<%s.%s> | Reading CSV data. | keys: %s | data size: %s",
+            __class__.__name__,
+            "_parse_atools_csv",
+            _keys,
+            len(file),
+        )
+        inventory: list[InventoryItem] = []
+        for entry in res:
+            if entry["name"].lower().startswith("free company credits") or entry["name"].lower() in omit_item_names:
+                LOGGER.debug("<%s.%s> | Skipping entry. | entry: %s", __class__.__name__, "_parse_atools_csv", entry["name"])
+                continue
+            # Given we are using item names; there is a "small" chance it will return incorrect items
+            # but it should find everything as it's directly from the game.
+            try:
+                item_id: Item = self.get_item(item=entry["name"], limit_results=1, match=95)
+            except MoogleLookupError:
+                LOGGER.warning("<%s.%s> | Failed to lookup item name. | item: %s", __class__.__name__, "_parse_atools_csv", entry["name"])
+                continue
+
+            item = InventoryItem(item_id=item_id.id, data=entry)
+            # If we have inventory locations to omit and our item is NOT in that list of locations, lets add it to our results.
+            if item.location not in omit_inv_locs:
+                inventory.append(item)
+
+        if isinstance(file, TextIOWrapper):
+            file.close()
+        return inventory
 
     async def get_current_marketboard(
         self,
@@ -1344,7 +1428,7 @@ class Moogle(Generic):
 
         Parameters
         ----------
-        items: :class:`Optional[list[str | int] | list[FFXIVItem]]`, optional
+        items: :class:`str | list[Item | str]`
             A list of item_names, by default None.
         **kwargs: :class:`Unpack[MarketBoardParams]`
             Any additional params to pass to `<UniversalisAPI.get_bulk_current_data()>`.
@@ -1420,78 +1504,223 @@ class Moogle(Generic):
         )
         return await self._universalis.get_bulk_history_data(items=query, **kwargs)
 
-    def _parse_atools_csv(
+    async def get_suggested_price(
         self,
-        data: bytes | str,
+        item: int | str,
         *,
-        omit_item_names: Optional[list[str]] = None,
-        omit_inv_locs: Optional[list[InventoryLocation]] = None,
-    ) -> list[InventoryItem]:
-        r"""Parse a Allagon Tools Inventory CSV.
+        filter_results: bool = True,
+        world_or_dc: Optional[World | DataCenter] = None,
+        item_quality: ItemQuality = ItemQuality.NQ,
+        num_of_listings: int = 50,
+    ) -> SuggestedPrice:
+        """Use current listings and recent history listings to give a "suggestive" price and stack size to sell the item.
 
-        Take's the `bytes` or `str` array and returns a list of :class:`FFXIVInventoryItem`.
-        - These objects are a smaller reference of :class:`FFXIVItem` as they contain character specific information.
+        .. note::
+            The information is purely based on the sample size.
+            - So increasing or decreasing the `num_of_listings` parameter can skew the results.
+
+
+        .. note::
+            You can change the default DataCenter by setting the `<UniversalisAPI>.datacenter` property.
+
 
         Parameters
         ----------
-        data: :class:`bytes | str `
-            The source of the CSV file data. This assumes the data structure of the CSV file is using `\n` as a seperator for rows.
-        omit_inv_locs: :class:`Optional[list[InventoryLocationEnum]]`, optional
-            The inventory location of the item to omit from our returned list, by default is None.
-            - If `None`, will use the global `ATOOLS_OMIT_INV_LOCS`.
-        omit_item_names: :class:`Optional[list[str]]`, optional
-            Any item names to omit such as `Free Company Credits` as it's not apart of the XIV Item.json, by default [].
-            - If `None`, will use the global `ATOOLS_OMIT_ITEM_NAMES`.
+        item: :class:`int | str`
+            A Final Fantasy 14 item id of int or str type.
+        world_or_dc: :class:`DataCenter | World`, optional
+            The Final Fantasy 14 World or Datacenter to query your results for, by default `<UniversalisAPI>.datacenter`.
+            - The default is a datacenter for the library, `<DataCenter>.Crystal`.
+        item_quality: :class:`ItemQuality`, optional
+            The Item Quality, by default `<ItemQuality>.NQ`.
+        num_of_listings: :class:`int`, optional
+            The number of listings and recent history listings to fetch, by default 50.
+        filter_results: :class:`bool`, optional
+            If we should omit too high of price per unit entries from Current listings.
 
         Returns
         -------
-        :class:`list[FFXIVInventoryItem]`
-            Returns a list of converted CSV data into FFXIVInventoryItem.
+        :class:`str`
+            A string including the item name, quality, world, sample size, current highest price and lowest price,
+            mean price diff for current and recent history and suggested stack sizing.
 
         """
-        if isinstance(data, bytes):
-            data = data.decode(encoding="utf-8")
-        keys = data.split("\n")[0]
-        file = data
+        if isinstance(item, str):
+            item = int(item)
 
-        if omit_inv_locs is None:
-            omit_inv_locs = ATOOLS_OMIT_INV_LOCS
+        if world_or_dc is None:
+            world_or_dc = self._universalis.default_datacenter
 
-        if omit_item_names is None:
-            omit_item_names = ATOOLS_OMIT_ITEM_NAMES
-
-        # Keys= "Favorite?", "Icon", "Name", "Type", "Total Quantity Available", "Source", "Inventory Location"
-        # We know the structure of res to be Iterator[AllagonToolsInventoryCSV].
-        _keys: list[str] = keys.strip().replace("?", "").lower().replace(" ", "_").split(",")
-        res: Iterator[AllagonToolsInventoryCSV] = csv.DictReader(file, fieldnames=_keys)  # type: ignore[reportAssignmentType]
-        LOGGER.debug(
-            "<%s.%s> | Reading CSV data. | keys: %s | data size: %s",
-            __class__.__name__,
-            "_parse_atools_csv",
-            _keys,
-            len(file),
+        # Get a bulk of data to check average price/stack and other information to make a suggested price.
+        res: CurrentData = await self._universalis.get_current_data(
+            item=item,
+            world_or_dc=world_or_dc,
+            num_listings=num_of_listings,
+            num_history_entries=num_of_listings,
+            item_quality=item_quality,
         )
-        inventory: list[InventoryItem] = []
-        for entry in res:
-            if entry["name"].lower().startswith("free company credits") or entry["name"].lower() in omit_item_names:
-                LOGGER.debug("<%s.%s> | Skipping entry. | entry: %s", __class__.__name__, "_parse_atools_csv", entry["name"])
-                continue
-            # Given we are using item names; there is a "small" chance it will return incorrect items
-            # but it should find everything as it's directly from the game.
-            try:
-                item_id: Item = self.get_item(item=entry["name"], limit_results=1, match=95)
-            except MoogleLookupError:
-                LOGGER.warning("<%s.%s> | Failed to lookup item name. | item: %s", __class__.__name__, "_parse_atools_csv", entry["name"])
-                continue
 
-            item = InventoryItem(item_id=item_id.id, data=entry)
-            # If we have inventory locations to omit and our item is NOT in that list of locations, lets add it to our results.
-            if item.location not in omit_inv_locs:
-                inventory.append(item)
+        stacksize: int = 0
+        optimal_stacksize: str = "UNK"
+        for key, value in res.stack_size_histogram.items():
+            if value > stacksize:
+                stacksize = value
+                optimal_stacksize = key
 
-        if isinstance(file, TextIOWrapper):
-            file.close()
-        return inventory
+        cur_stacksize_mode: float = statistics.mode(data=[entry.quantity for entry in res.listings])
+        history_stacksize_mode: float = statistics.mode(data=[entry.quantity for entry in res.recent_history])
+        # Let's sort our listings by highest price first.
+        sorted_cur_listings: list[CurrentDataEntries] = sorted(res.listings, key=lambda x: x.price_per_unit, reverse=True)
+        sorted_history_listings: list[HistoryDataEntries] = sorted(res.recent_history, key=lambda x: x.price_per_unit, reverse=True)
+
+        cur_listings: list[CurrentDataEntries] = []
+        history_listings: list[HistoryDataEntries] = []
+        if filter_results:
+            cur_listings.extend(entry for entry in sorted_cur_listings if entry.price_per_unit < (res.current_average_price * 2))
+            history_listings.extend(entry for entry in sorted_history_listings if entry.price_per_unit < (res.average_price * 2))
+        else:
+            cur_listings = sorted_cur_listings
+            history_listings = sorted_history_listings
+
+        # Let's get the middle price point
+        cur_price_mean: float = statistics.mean(data=[entry.price_per_unit for entry in cur_listings])
+        history_price_mean: float = statistics.mean(data=[entry.price_per_unit for entry in history_listings])
+        # So we have the MEAN values for price and stacksize in terms of current listings and history listings.
+        # Current highest price = sorted_cur_listings[0]
+        # History highest price = sorted_history_listings[0]
+        cur_mean_diff = int(cur_listings[0].price_per_unit - cur_price_mean)
+        hist_mean_diff = int(history_listings[0].price_per_unit - history_price_mean)
+        cur_metrics = SuggestedPriceMetrics(
+            cur_listings[0].price_per_unit,
+            cur_listings[-1].price_per_unit,
+            cur_price_mean,
+            cur_mean_diff,
+            str(cur_stacksize_mode),
+        )
+        history_metrics = SuggestedPriceMetrics(
+            history_listings[0].price_per_unit,
+            history_listings[-1].price_per_unit,
+            history_price_mean,
+            hist_mean_diff,
+            str(history_stacksize_mode),
+        )
+        try:
+            name: str = self.get_item(item=str(res.item_id), limit_results=1).name
+        except MoogleLookupError:
+            name = "UNK"
+
+        return SuggestedPrice(
+            name=name,
+            item_id=res.item_id,
+            item_quality=item_quality,
+            world_or_dc=world_or_dc,
+            num_of_listings=num_of_listings,
+            current_metrics=cur_metrics,
+            history_metrics=history_metrics,
+            stacksize=optimal_stacksize,
+        )
+
+    # TODO(@k8thekat): - Decide on a data structure for this function.
+    # If DC provided; break out pricing per World?
+    # Allow filtering by Expansion (if possible)
+    # Check "Last Purchase Dates"
+    async def cheapest_price(
+        self,
+        item: int | str | Item,
+        **kwargs: Unpack[CurMarketBoardParams],
+    ) -> list[str]:
+        """Returns the cheapest price per unit of an item.
+
+        Parameters
+        ----------
+        item: :class:`int | str`
+            _description_.
+        **kwargs: :class:`Unpack[CurMarketBoardParams]`
+            Any additional params to pass to `<UniversalisAPI.get_bulk_current_data()>`.
+
+        Returns
+        -------
+        str
+            Returns a string of entries seperated by newlines.
+
+        """
+        if isinstance(item, int):
+            item = str(item)
+        elif isinstance(item, Item):
+            item = str(item.id)
+
+        res: CurrentData = await self._universalis.get_current_data(item, **kwargs)
+        timestamp = (
+            res.last_upload_time.strftime("%d/%m | %H:%M(%Z)")
+            if isinstance(res.last_upload_time, datetime.datetime)
+            else res.last_upload_time
+        )
+
+        data: list[str] = [
+            (
+                f"Item: {res.name}[{item}] | Time: {timestamp} | World: {entry.world_name} | DC: {res.dc_name} "
+                f"| Quantity: {entry.quantity} | PricePU/Total: {entry.price_per_unit}/{entry.total + entry.tax}"
+            )
+            for entry in sorted(res.listings, key=lambda x: x.price_per_unit)
+        ]
+        return data
+
+    # TODO(@k8thekat): - Decide on a data structure for this function.
+    # If DC provided; break out pricing per World?
+    # Allow filtering by Expansion (if possible)
+    # Check "Last Purchase Dates"
+    # Class with listings; have Enum/func to sort listings(filter).
+
+    async def currency_spender(
+        self,
+        currency: Currency = Currency.Allagan_Tomestone_of_Poetics,
+        **kwargs: Unpack[CurMarketBoardParams],
+    ) -> list[str]:
+        """currency_spender _summary_.
+
+        Parameters
+        ----------
+        currency: :class:`Currency`, optional
+            The currency to look up for potential spending, by default Currency.Allagan_Tomestone_of_Poetics.
+        **kwargs: :class:`Unpack[CurMarketBoardParams]`
+            Any additional params to pass to `<UniversalisAPI.get_bulk_current_data()>`.
+
+
+        Returns
+        -------
+        :class:`list[str]`
+            _description_.
+
+        """
+        item_response: ItemResponse = await self._garlandtools.item(item_id=currency.value)
+        item_data: list[TradeShops] | None = item_response["item"].get("tradeCurrency", None)
+        if item_data is None:
+            return []
+
+        items: list[int] = []
+        for entry in item_data:
+            for i in entry["listings"]:
+                items.extend([e["id"] for e in i["item"] if e["id"] not in items])
+
+        market = UniversalisAPI()
+        res: list[CurrentData] | CurrentData = await market.get_bulk_current_data(items=items, **kwargs)
+        output: list[str] = []
+        if isinstance(res, list):
+            res = sorted(res, key=lambda x: x.regular_sale_velocity, reverse=True)
+
+            for entry in res:
+                timestamp: str | int = (
+                    entry.last_upload_time.strftime("%d/%m | %H:%M(%Z)")
+                    if isinstance(entry.last_upload_time, datetime.datetime)
+                    else entry.last_upload_time
+                )
+                data: str = (
+                    f"Name: {entry.name}[{entry.item_id}] | Timestamp: {timestamp} | Sale Velocity: {entry.regular_sale_velocity} |"
+                    f"Avg Price Cur/Hist/Min: {entry.current_average_price}/{entry.average_price}/{entry.min_price}"
+                )
+                if data not in output:
+                    output.append(data)
+        return output
 
 
 class Item(Object):
@@ -1553,6 +1782,8 @@ class Item(Object):
         Cached current marketboard data, if applicable.
     mb_history: :class:`Optional[HistoryData]`
         Cached history marketboard data, if applicable.
+    garlandtools_data: :class:`Optional[ItemResponse]`
+        Cached GarlandTools API data, if applicable.
 
     """
 
@@ -1561,6 +1792,9 @@ class Item(Object):
     _fishing: Optional[Fishing]
     _spear_fishing: Optional[SpearFishing]
     _gathering: Optional[GatheringItem]
+
+    _garlandtools_data: Optional[ItemResponse]
+    "For GarlandTools API data"
 
     _mb_current: Optional[CurrentData]
     _mb_history: Optional[HistoryData]
@@ -1770,6 +2004,26 @@ class Item(Object):
         """
         self._mb_history = await self._moogle._universalis.get_history_data(item=self.id, **kwargs)
         return self._mb_history
+
+    @property
+    def garlandtools_data(self) -> Optional[ItemResponse]:
+        """Cached GarlandTools API data, if applicable."""
+        try:
+            return self._garlandtools_data
+        except AttributeError:
+            return None
+
+    async def get_garlandtools(self) -> ItemResponse:
+        """Retrieve GarlandTools API data for this item, while also setting the `<Item.garlandtools_data>` property.
+
+        Returns
+        -------
+        :class:`ItemResponse`
+            A JSON response.
+
+        """
+        self._garlandtools_data = await self._moogle._garlandtools.item(item_id=self.id)
+        return self._garlandtools_data
 
 
 class JobRecipe(Object):
@@ -2753,3 +3007,105 @@ class InventoryItem(Object):
         if location.lower().startswith("crystals"):
             return InventoryLocation.crystals
         return InventoryLocation.null
+
+
+class SuggestedPrice:
+    """A represensation of the data from `get_suggested_price`.
+
+    Attributes
+    ----------
+    name: :class:`str`
+        The
+    item_id: :class:`int`
+        The Final Fantasy 14 item ID.
+    item_quality: :class:`ItemQuality`, optional
+            The quality of the Item to query, by default `<ItemQuality>.NQ`.
+    world_or_dc: :class:`DataCenter | World`, optional
+        The Final Fantasy 14 World or Datacenter to query your results for, by default `<UniversalisAPI>.datacenter`.
+        - The default is a datacenter for the library, `<DataCenter>.Crystal`.
+    num_listings: :class:`int`, optional
+        The number of listing results for the query, by default 10.
+    current_metrics: :class:`SuggestedPriceMetrics`
+        The metrics information based upon `CurrentDataEntries`.
+    history_metrics: :class:`SuggestedPriceMetrics`
+        The metrics information based upon the `HistoryDataEntries`.
+    stacksize: :class:`str`
+        The Optimal stacksize calculated.
+
+    """
+
+    name: str
+    item_id: int
+    item_quality: ItemQuality
+    world_or_dc: DataCenter | World
+    num_of_listings: int
+    current_metrics: SuggestedPriceMetrics
+    history_metrics: SuggestedPriceMetrics
+    stacksize: str
+
+    def __init__(
+        self,
+        name: str,
+        item_id: int,
+        item_quality: ItemQuality,
+        world_or_dc: DataCenter | World,
+        num_of_listings: int,
+        current_metrics: SuggestedPriceMetrics,
+        history_metrics: SuggestedPriceMetrics,
+        stacksize: str,
+    ) -> None:
+        self.name = name
+        self.item_id = item_id
+        self.item_quality = item_quality
+        self.world_or_dc = world_or_dc
+        self.num_of_listings = num_of_listings
+        self.current_metrics = current_metrics
+        self.history_metrics = history_metrics
+        self.stacksize = stacksize
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
+    def __repr__(self) -> str:
+        temp: list[str] = []
+        temp.extend((
+            f"Price Insight for: {self.name} ({self.item_id}) | Item Quality: {self.item_quality.name} | World: {self.world_or_dc.name} | Sample Size: {self.num_of_listings}",  # noqa: E501
+            f"- Current Highest Price/Unit: {self.current_metrics.highest_price} | Lowest Price/Unit: {self.current_metrics.lowest_price}",
+            f"- Current Mean Price/Unit: {self.current_metrics.mean_price} | Price/Unit diff over Mean: {self.current_metrics.diff_price} | {self.current_metrics.diff_price / self.current_metrics.highest_price % 2 * 100:.2f}%",  # noqa: E501
+            f"- History Highest Price/Unit: {self.history_metrics.highest_price} | Lowest Price/Unit: {self.history_metrics.lowest_price}",
+            f"- History Mean Price/Unit: {self.history_metrics.mean_price} | Price/Unit diff over Mean: {self.history_metrics.diff_price} | {self.history_metrics.diff_price / self.history_metrics.highest_price % 2 * 100:.2f}%",  # noqa: E501
+            f"- Common stack sizes (Optimal | Current Mode | History Mode): {self.stacksize} | {self.current_metrics.stacksize} | {self.history_metrics.stacksize}",  # noqa: E501
+        ))
+        return "\n".join(temp)
+
+
+class SuggestedPriceMetrics(NamedTuple):
+    """The metrics related to `CurrentDataEntries` or `HistoryDataEntries`.
+
+    Attributes
+    ----------
+    highest_price: :class:`int`
+        The highest price in the listings.
+    lowest_price: :class:`int`
+        The lowest price in the listings.
+    mean_price: :class:`float`
+        Also known as the "average".
+    diff_price: :class:`float`
+        The price difference between the current highest and the `mean_price` or average.
+    stacksize: :class:`str`
+        The most frequent stacksize in the listings.
+
+    """
+
+    highest_price: int
+    lowest_price: int
+    mean_price: float
+    diff_price: float
+    stacksize: str
+
+    # def __init__(self, highest_price: int, lowest_price: int, mean_price: float, diff_price: float, stacksize: str) -> None:
+    #     self.highest_price = highest_price
+    #     self.lowest_price = lowest_price
+    #     self.mean_price = mean_price
+    #     self.diff_price = diff_price
+    #     self.stacksize = stacksize

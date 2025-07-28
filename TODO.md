@@ -72,7 +72,7 @@ The current data structions/class's used to implement the *Scope*.
 ### FFXIVInventoryItem
     Parse Allagon Tools csv file into an object.
     - Prep for Universalis interaction.
-    - Searching up an Item and see it's cost vs making it.
+    - Searching up a Recipe and see it's cost vs making it.
         - Sort by least missing ingredients.
         - Attach Costs to items and or cheapest to "craft".
 

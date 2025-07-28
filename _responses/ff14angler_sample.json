@@ -1,0 +1,325 @@
+{
+    24: {
+        "fish_name": "Abalathian Smelt",
+        "restrictions": [],
+        "hook_type": "7s",
+        "double_fish": 3,
+        "baits": {
+            1018: {
+                "bait_name": "syrphid basket",
+                "hook_percent": "1.00"
+            },
+            1019: {
+                "bait_name": "silver spoon lure",
+                "hook_percent": "1.00"
+            },
+            1021: {
+                "bait_name": "sinking minnow",
+                "hook_percent": "0.91"
+            },
+            1023: {
+                "bait_name": "honey worm",
+                "hook_percent": "1.00"
+            },
+            1025: {
+                "bait_name": "wildfowl fly",
+                "hook_percent": "0.99"
+            },
+            1027: {
+                "bait_name": "spinner",
+                "hook_percent": "1.00"
+            },
+            1030: {
+                "bait_name": "stem borer",
+                "hook_percent": "1.00"
+            },
+            1031: {
+                "bait_name": "mythril spoon lure",
+                "hook_percent": "1.00"
+            },
+            1032: {
+                "bait_name": "snurble fly",
+                "hook_percent": "0.95"
+            },
+            1033: {
+                "bait_name": "topwater frog",
+                "hook_percent": "1.00"
+            },
+            1034: {
+                "bait_name": "glowworm",
+                "hook_percent": "1.00"
+            },
+            1037: {
+                "bait_name": "rainbow spoon lure",
+                "hook_percent": "1.00"
+            },
+            1038: {
+                "bait_name": "spinnerbait",
+                "hook_percent": "1.00"
+            },
+            1039: {
+                "bait_name": "streamer",
+                "hook_percent": "1.00"
+            },
+            1041: {
+                "bait_name": "caddisfly larva",
+                "hook_percent": "0.68"
+            },
+            1044: {
+                "bait_name": "stonefly nymph",
+                "hook_percent": "0.24"
+            },
+            1045: {
+                "bait_name": "purse web spider",
+                "hook_percent": "0.27"
+            },
+            1051: {
+                "bait_name": "brute leech",
+                "hook_percent": "0.14"
+            },
+            1071: {
+                "bait_name": "freshwater boilie",
+                "hook_percent": "1.00"
+            },
+            1077: {
+                "bait_name": "versatile lure",
+                "hook_percent": "0.31"
+            }
+        }
+    },
+    316: {
+        "fish_name": "Ice Faerie",
+        "restrictions": [],
+        "hook_type": "7s",
+        "double_fish": 3,
+        "baits": {
+            1041: {
+                "bait_name": "caddisfly larva",
+                "hook_percent": "0.32"
+            },
+            1044: {
+                "bait_name": "stonefly nymph",
+                "hook_percent": "0.36"
+            },
+            1045: {
+                "bait_name": "purse web spider",
+                "hook_percent": "0.72"
+            },
+            1051: {
+                "bait_name": "brute leech",
+                "hook_percent": "0.20"
+            },
+            1073: {
+                "bait_name": "metal spinner",
+                "hook_percent": "0.23"
+            },
+            1077: {
+                "bait_name": "versatile lure",
+                "hook_percent": "0.16"
+            },
+            316: {
+                "bait_name": "Ice Faerie",
+                "hook_percent": "0.00"
+            }
+        }
+    },
+    318: {
+        "fish_name": "Coerthan Crab",
+        "restrictions": [],
+        "hook_type": "7s",
+        "double_fish": 3,
+        "baits": {
+            1044: {
+                "bait_name": "stonefly nymph",
+                "hook_percent": "0.18"
+            },
+            1045: {
+                "bait_name": "purse web spider",
+                "hook_percent": "0.00"
+            },
+            1051: {
+                "bait_name": "brute leech",
+                "hook_percent": "0.25"
+            },
+            1073: {
+                "bait_name": "metal spinner",
+                "hook_percent": "0.12"
+            },
+            1077: {
+                "bait_name": "versatile lure",
+                "hook_percent": "0.06"
+            },
+            24: {
+                "bait_name": "Abalathian Smelt",
+                "hook_percent": "0.84"
+            },
+            316: {
+                "bait_name": "Ice Faerie",
+                "hook_percent": "0.56"
+            }
+        }
+    },
+    327: {
+        "fish_name": "Hotrod",
+        "restrictions": [
+            "Weather"
+        ],
+        "hook_type": "7s",
+        "double_fish": 0,
+        "baits": {
+            1045: {
+                "bait_name": "purse web spider",
+                "hook_percent": "0.00"
+            },
+            1051: {
+                "bait_name": "brute leech",
+                "hook_percent": "0.18"
+            },
+            1073: {
+                "bait_name": "metal spinner",
+                "hook_percent": "0.05"
+            },
+            1077: {
+                "bait_name": "versatile lure",
+                "hook_percent": "0.07"
+            },
+            24: {
+                "bait_name": "Abalathian Smelt",
+                "hook_percent": "0.16"
+            },
+            316: {
+                "bait_name": "Ice Faerie",
+                "hook_percent": "0.40"
+            }
+        }
+    },
+    437: {
+        "fish_name": "Capelin",
+        "restrictions": [
+            "Time",
+            "Tome Of Regional Folklore"
+        ],
+        "hook_type": "7s",
+        "double_fish": 0,
+        "baits": {
+            1045: {
+                "bait_name": "purse web spider",
+                "hook_percent": "0.00"
+            },
+            1051: {
+                "bait_name": "brute leech",
+                "hook_percent": "0.09"
+            },
+            1077: {
+                "bait_name": "versatile lure",
+                "hook_percent": "0.01"
+            }
+        }
+    },
+    456: {
+        "fish_name": "Priestfish",
+        "restrictions": [
+            "Tome Of Regional Folklore"
+        ],
+        "hook_type": "9s",
+        "double_fish": 0,
+        "baits": {
+            1051: {
+                "bait_name": "brute leech",
+                "hook_percent": "0.11"
+            },
+            1077: {
+                "bait_name": "versatile lure",
+                "hook_percent": "0.05"
+            }
+        }
+    },
+    489: {
+        "fish_name": "Bishopfish",
+        "restrictions": [
+            "Tome Of Regional Folklore"
+        ],
+        "hook_type": "11s",
+        "double_fish": 0,
+        "baits": {
+            1051: {
+                "bait_name": "brute leech",
+                "hook_percent": "0.02"
+            }
+        }
+    },
+    504: {
+        "fish_name": "Charibenet",
+        "restrictions": [
+            "Tome Of Regional Folklore"
+        ],
+        "hook_type": "12s",
+        "double_fish": 0,
+        "baits": {
+            1045: {
+                "bait_name": "purse web spider",
+                "hook_percent": "0.00"
+            },
+            316: {
+                "bait_name": "Ice Faerie",
+                "hook_percent": "0.03"
+            }
+        }
+    },
+    507: {
+        "fish_name": "Ghost Faerie",
+        "restrictions": [],
+        "hook_type": "7s",
+        "double_fish": 0,
+        "baits": {
+            1044: {
+                "bait_name": "stonefly nymph",
+                "hook_percent": "0.21"
+            },
+            1073: {
+                "bait_name": "metal spinner",
+                "hook_percent": "0.61"
+            },
+            1077: {
+                "bait_name": "versatile lure",
+                "hook_percent": "0.31"
+            }
+        }
+    },
+    908: {
+        "fish_name": "Timeworn Dragonskin Map",
+        "restrictions": [],
+        "hook_type": "7s",
+        "double_fish": 0,
+        "baits": {
+            1021: {
+                "bait_name": "sinking minnow",
+                "hook_percent": "0.09"
+            },
+            1025: {
+                "bait_name": "wildfowl fly",
+                "hook_percent": "0.01"
+            },
+            1032: {
+                "bait_name": "snurble fly",
+                "hook_percent": "0.05"
+            },
+            1044: {
+                "bait_name": "stonefly nymph",
+                "hook_percent": "0.01"
+            },
+            1045: {
+                "bait_name": "purse web spider",
+                "hook_percent": "0.00"
+            },
+            1051: {
+                "bait_name": "brute leech",
+                "hook_percent": "0.01"
+            },
+            1077: {
+                "bait_name": "versatile lure",
+                "hook_percent": "0.03"
+            }
+        }
+    }
+}

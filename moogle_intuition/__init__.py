@@ -23,7 +23,7 @@ from __future__ import annotations
 __title__ = "Moogle's Intuition"
 __author__ = "k8thekat"
 __license__ = "GNU"
-__version__ = "0.2.1-dev"
+__version__ = "0.3.0-dev"
 __credits__ = "Universalis, GarlandTools and SquareEnix"
 
 from typing import Literal, NamedTuple
@@ -40,6 +40,6 @@ class VersionInfo(NamedTuple):  # noqa: D101
     release_level: Literal["release", "development"]
 
 
-version_info: VersionInfo = VersionInfo(major=0, minor=2, revision=1, release_level="development")
+version_info: VersionInfo = VersionInfo(major=0, minor=3, revision=0, release_level="development")
 
 del version_info, VersionInfo

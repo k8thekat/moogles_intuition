@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, NamedTuple, Optional, Self, Union, Unpack, overload
 
 import aiohttp
+from aiohttp_client_cache.session import CachedSession
 from async_garlandtools import GarlandToolsAsync, IconType, Object as GTObject
 from async_universalis import CurrentData, HistoryData, ItemQuality, UniversalisAPI
 from thefuzz import fuzz  # type: ignore[reportMissingStubFile]
@@ -964,7 +965,10 @@ class Moogle(Generic, GarlandToolsAsync):
             self._angler = Angler(session=session)
 
         if garlandtools is None:
-            self._garlandtools = GarlandToolsAsync(session=session, cache_location=Path(__file__).parent)
+            if isinstance(session, CachedSession):
+                self._garlandtools = GarlandToolsAsync(session=session, cache_location=Path(__file__).parent)
+            else:
+                self._garlandtools = GarlandToolsAsync(cache_location=Path(__file__).parent)
 
         # Create our empty itemcache.
         self._items_cache = {}

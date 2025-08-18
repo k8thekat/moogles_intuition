@@ -32,6 +32,7 @@ __all__ = (
     "ItemSeries",
     "ItemSpecialBonus",
     "ItemUICategory",
+    "Patch",
 )
 
 
@@ -123,6 +124,7 @@ class InventoryLocation(IntEnum):
         CRYSTALS = 11 |
         CURRENCY = 12 |
         ARMOIRE = 13 | This is from Allagon Tools Inventory exports
+        HOUSING = 99 | Items from Housing plots.
 
     """
 
@@ -140,6 +142,10 @@ class InventoryLocation(IntEnum):
     crystals = 11
     currency = 12
     armoire = 13
+    housing_interior_placed = 90
+    housing_interior_stored = 91
+    housing_exterior_placed = 92
+    housing_exterior_stored = 93
 
 
 class ItemSeries(Enum):
@@ -379,3 +385,12 @@ class ItemUICategory(Enum):
     Vipers_Arm = 110
     Pictomancers_Arm = 111
     Outfits = 112
+
+
+class Patch(Enum):
+    A_Realm_Reborn = 2
+    Heavensward = 3
+    Stormblood = 4
+    Shadowbringers = 5
+    Endwalker = 6
+    Dawntrail = 7

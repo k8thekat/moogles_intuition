@@ -148,10 +148,12 @@ def gitHub_initial_commit() -> None:
 
 def update_changelog(version: str, new_commit: str, files: dict[str, list[str]]) -> None:
     # Format the data into the `CHANGELOG.md`
-    set_version = f"# Version - {version} - [{new_commit[:7]}]({repo_url}/commit/{new_commit})\n"
+    set_version = f"## Version - {version} - [{new_commit[:7]}]({repo_url}/commit/{new_commit})\n"
+    # add_changelog: str = f"#### CHANGELOG.md\n- Version info from `{cl_ver}` added.\n\n"
+    # add_init: str = f"#### Version bump to `{version}`\n\n"
     data = set_version
     for file_name, file_changes in files.items():
-        data: str = data + "## " + file_name + "\n" + "\n".join(file_changes) + "\n\n"
+        data: str = data + "#### " + file_name + "\n" + "\n".join(file_changes) + "\n\n"
 
     data = data + changelog_data
     with cl_file.open("r+", encoding="utf-8") as changelog:

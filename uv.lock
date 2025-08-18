@@ -117,15 +117,12 @@ wheels = [
 
 [[package]]
 name = "async-universalis"
-version = "3.0.1.dev0"
+version = "3.0.2.dev0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b1/16/de3ad6a97a14b1be23e62a63c0b2f0f519086788e7174974fe01a25ec428/async_universalis-3.0.1.dev0.tar.gz", hash = "sha256:807fd75ecb318a4e1a0232191a31804c900b10320104ebd5b1531dd67100e852", size = 54447, upload-time = "2025-07-28T20:32:59.726Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/fa/30d425a3be8392510b1909cd1a04a74b6e3119a5e3fe34d23955ed986e12/async_universalis-3.0.1.dev0-py3-none-any.whl", hash = "sha256:0cbb8046260e06964aab056f82af063d6cf324a168532ba864b8e134dd367c19", size = 42306, upload-time = "2025-07-28T20:32:58.23Z" },
-]
+sdist = { url = "https://files.pythonhosted.org/packages/f4/86/692e60a2c7fd21b54a63eec1661b40e610be305bb8118cc8f7d9c8b204b5/async_universalis-3.0.2.dev0.tar.gz", hash = "sha256:3abdfeb5df4c69a2a17c748822abbd61dc61c30075b9e80ee006e93ae68fb588", size = 1499544, upload-time = "2025-07-29T17:07:37.047Z" }
 
 [[package]]
 name = "attrs"

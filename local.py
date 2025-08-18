@@ -7,6 +7,7 @@ import json
 import logging
 import subprocess
 import sys
+from pprint import pprint
 from argparse import Namespace
 from configparser import ConfigParser
 from logging.handlers import TimedRotatingFileHandler
@@ -16,11 +17,12 @@ from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 import aiohttp
 from async_garlandtools import GarlandToolsAsync as GarlandTools
-from async_garlandtools._types import TradeShops
-from universalis import CurrentData, UniversalisAPI, World
+from async_garlandtools._types import ItemResponse, TradeShops
+from async_universalis import CurrentData, UniversalisAPI, World
 
 
-from moogle_intuition import Moogle, Currency, Item
+from moogle_intuition import Moogle, Currency, Item, Patch
+from moogle_intuition.modules import InventoryItem
 
 
 if TYPE_CHECKING:
@@ -36,10 +38,22 @@ LOGGER: logging.Logger = logging.getLogger(__name__)
 async def local_test() -> None:
     moogle: Moogle = await Moogle().build()
     stime = time()  # don't remove this line.
-    res = await moogle.currency_spender(currency=Currency.Allagan_Tomestone_of_Poetics)
-    print(res)
+    # pprint(moogle._gathering_item_levels)
+    await inventory_comp(moogle)
     LOGGER.info("Completed local_test() in %s seconds...", format(time() - stime, ".3f"))
     await moogle.clean_up()
+
+
+async def inventory_comp(moogle: Moogle) -> None:
+    from moogle_intuition._types import MakePlaceData
+    from moogle_intuition._enums import InventoryLocation
+
+    mp_data: MakePlaceData = load_data_from_file(Path("./local_data/Kat House.json"), is_json=True)
+    print(len(mp_data["interiorFurniture"]))
+    atools_data = load_data_from_file(Path("./local_data/Med-house-list.csv"), encoding="utf-8-sig")
+
+    res: list[InventoryItem] = moogle._parse_atools_csv(atools_data)
+    print(len(res))
 
 
 async def build_test() -> None:
@@ -52,6 +66,7 @@ async def build_test() -> None:
     item_handler: Moogle = await Moogle().build()
     # Item lookup test.
     item: Item = item_handler.get_item(item="Angelfish", limit_results=1)  # Angelfish
+    item.level_item
     print(item)  # noqa:
 
     # Fishing Item test
@@ -128,6 +143,46 @@ def flatten(data: list[Any], new_list: list[Any]) -> list:
         else:
             new_list.append(i)
     return new_list
+
+
+def load_data_from_file(path: Path, size: Optional[int] = None, is_json: bool = False, encoding: str = "utf-8") -> str | dict[Any, Any]:
+    """Basic file read.
+
+    Parameters
+    -----------
+    path: :class:`Path`
+        The Path to load the data from.
+    size: :class:`Optional[int]`, optional
+        The amount of data to read if needed, by default None will read until EOF.
+
+    Returns
+    --------
+    :class:`str`
+        The file data.
+
+    Raises
+    -------
+    FileNotFoundError
+        If the file path doesn't exist.
+    TypeError
+        If the path provided is not a Path object.
+    """
+
+    if isinstance(path, Path) is False:
+        msg = "<%s.%s> | The Path provided is not a Path object. | Path: %s"
+        raise TypeError(msg, __name__, "load_data_from_file", path)
+
+    elif path.exists() is False:
+        msg = "<%s.%s> | The Path provided does not exist. | Path: %s"
+        raise FileNotFoundError(msg, __name__, "load_data_from_file", path)
+
+    with path.open(mode="r", encoding=encoding) as file:
+        if is_json is True:
+            data = json.loads(file.read(size))
+            return data
+
+        data = file.read(size)
+        return data
 
 
 def write_data_to_file(

@@ -50,8 +50,8 @@ Additional features and or integration with other platforms.
         - *DONE* - Get fishing location information by FF14 Fish ID.
 
 ### Garland Tools:
-    -  *DONE*  Link -> https://www.garlandtools.org/db/#item/[X] - X = `item_id`
     - Garland Tools API Wrapper Integration -
+    -  *DONE*  Link -> https://www.garlandtools.org/db/#item/[X] - X = `item_id`
 
 ### FFXIV Console Games Wiki 
     - *DONE* - Link -> https://ffxiv.consolegameswiki.com/wiki/FF14_Wiki
@@ -61,8 +61,7 @@ Additional features and or integration with other platforms.
 The current data structions/class's used to implement the *Scope*.
 - *DONE* - Remove un-used attributes from classes to prevent bloat.
 
-### FFXIVFishParameter
-    - !ISSUE: - text field is returning null occasionally.
+
 
 ### FFXIVFishingSpot
     Create lookup function/reference for FF14Angler Integration
@@ -71,6 +70,7 @@ The current data structions/class's used to implement the *Scope*.
 
 ### FFXIVInventoryItem
     Parse Allagon Tools csv file into an object.
+    - *DONE* - Loading and Converting of Allagaon Tools CSV data into Item Objects.
     - Prep for Universalis interaction.
     - Searching up a Recipe and see it's cost vs making it.
         - Sort by least missing ingredients.
@@ -79,4 +79,5 @@ The current data structions/class's used to implement the *Scope*.
 
 
 
-
+### MakePlace Integration
+    ???

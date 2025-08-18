@@ -521,3 +521,32 @@ class SpearFishingNotebookData(TypedDict):
     radius: int
     place_name: int
     gathering_point_base: int
+
+
+class MakePlaceData(TypedDict):
+    lightLevel: float
+    houseSize: str
+    interiorFixture: list[FurnitureFixtures]
+    interiorScale: int
+    interiorFurniture: list[FurnitureFixtures]
+    exteriorScale: int
+    exteriorFixture: list[FurnitureFixtures]
+    exteriorFurniture: list[FurnitureFixtures]
+    metaData: dict[str, int]
+    properties: dict[str, str]
+
+
+class FurnitureFixtures(TypedDict):
+    level: str
+    type: str
+    name: str
+    itemId: int
+    color: str
+    transform: NotRequired[Transform]
+    properties: dict[Any, Any]
+
+
+class Transform(TypedDict):
+    location: list[float]
+    rotation: list[float]
+    scale: list[int]

@@ -25,20 +25,20 @@ import datetime
 import json
 import logging
 import statistics
-from io import TextIOWrapper
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, NamedTuple, Optional, Self, Union, Unpack, overload
 
 import aiohttp
 from aiohttp_client_cache.session import CachedSession
 from async_garlandtools import GarlandToolsAsync, IconType, Object as GTObject
+from async_garlandtools._types import ItemResponse
 from async_universalis import CurrentData, HistoryData, ItemQuality, UniversalisAPI
 from thefuzz import fuzz  # type: ignore[reportMissingStubFile]
 
 from moogle_intuition.errors import MoogleLookupError
 from moogle_intuition.ff14angler._types import FishingData
 
-from ._enums import CraftType, Currency, EquipSlotCategory, FishingSpotCategory, InventoryLocation
+from ._enums import CraftType, Currency, EquipSlotCategory, FishingSpotCategory, InventoryLocation, Patch
 from .ff14angler import Angler, AnglerBaits, AnglerFish
 
 if TYPE_CHECKING:
@@ -238,7 +238,7 @@ ATOOLS_OMIT_ITEM_NAMES: list[str] = []
 class Object:
     """Our Base object class for FFXIV related object handling."""
 
-    _raw: DataTypeAliases
+    _raw: DataTypeAliases | AllagonToolsInventoryCSV
     _repr_keys: list[str]
     _moogle: Moogle
     # _universalis: Optional[UniversalisAPI]
@@ -256,7 +256,7 @@ class Object:
         8: 33916,
     }
 
-    def __init__(self, data: DataTypeAliases, *, moogle: Moogle) -> None:
+    def __init__(self, data: DataTypeAliases | AllagonToolsInventoryCSV, *, moogle: Moogle) -> None:
         """Handles setting our `_raw` attribute and setting our `Moogle` class.
 
         Parameters
@@ -916,7 +916,7 @@ class Builder(Generic):
             )
 
 
-class Moogle(Generic, GarlandToolsAsync):
+class Moogle(Generic):
     """Our handler type class for interacting with FFXIV Items, Recipes and other Data structures from XIV Datamining."""
 
     _builder: Builder
@@ -934,6 +934,18 @@ class Moogle(Generic, GarlandToolsAsync):
     _garlandtools: GarlandToolsAsync
 
     _items_cache: dict[str, Item]
+
+    @property
+    def garlandtools(self) -> GarlandToolsAsync:
+        """Returns the internal :class:`GarlandToolsAsync` object.
+
+        Returns
+        -------
+        :class:`GarlandToolsAsync`
+            An async version of GarlandTools.
+
+        """
+        return self._garlandtools
 
     def __init__(
         self,
@@ -956,7 +968,14 @@ class Moogle(Generic, GarlandToolsAsync):
             A pre-existing `<async_garlandtools.GarlandToolsAsync>` object if applicable, by default None.
 
         """
-        self._builder = Builder(session=session)
+        if garlandtools is None:
+            if isinstance(session, CachedSession):
+                self._garlandtools = GarlandToolsAsync(session=session, cache_location=Path(__file__).parent)
+            else:
+                self._garlandtools = GarlandToolsAsync(cache_location=Path(__file__).parent)
+                # TODO(@k8thekat): Address cached session being closed.
+                # This forces us to swap to a CachedSession object for all other usage.
+                session = self._garlandtools.session
 
         if universalis is None:
             self._universalis = UniversalisAPI(session=session)
@@ -964,12 +983,7 @@ class Moogle(Generic, GarlandToolsAsync):
         if angler is None:
             self._angler = Angler(session=session)
 
-        if garlandtools is None:
-            if isinstance(session, CachedSession):
-                self._garlandtools = GarlandToolsAsync(session=session, cache_location=Path(__file__).parent)
-            else:
-                self._garlandtools = GarlandToolsAsync(cache_location=Path(__file__).parent)
-
+        self._builder = Builder(session=session)
         # Create our empty itemcache.
         self._items_cache = {}
 
@@ -1220,26 +1234,29 @@ class Moogle(Generic, GarlandToolsAsync):
         LOGGER.debug("<%s.%s> | Returning %s partial matches", __class__.__name__, "_partial_match", len(matches))
         return matches
 
-    def _get_item_job_recipes(self, item_id: int) -> JobRecipe:
+    def _get_item_job_recipes(self, item_id: int) -> JobRecipe | None:
         LOGGER.debug(
             "<%s.%s> | Searching... Job Recipe by Item ID: %s | Entries: %s",
             __class__.__name__,
-            "get_item_job_recipes",
+            "_get_item_job_recipes",
             item_id,
             len(self._recipe_lookups),
         )
+
         data: Optional[DataTypeAliases] = self._recipe_lookups.get(str(item_id), None)
         if data is None or "CRP" not in data:
-            raise MoogleLookupError(str(item_id), "item_id", "get_item_job_recipes", self)
-
+            return None
+            # raise MoogleLookupError(str(item_id), "item_id", "_get_item_job_recipes", self)
         return JobRecipe(data=data, moogle=self)
 
     def _get_recipe(self, recipe_id: str) -> Recipe:
         # I am storing str "Recipe ID" : int "Item Result ID"
         LOGGER.debug("<%s.%s> | Searching... recipe_id: %s | entries: %s", __class__.__name__, "_get_recipe", recipe_id, len(self._recipes))
+
         data: Optional[DataTypeAliases] = self._recipes.get(recipe_id, None)
         if data is None or "item_result" not in data:
             raise MoogleLookupError(recipe_id, "recipe_id", "_get_recipe", self)
+
         return Recipe(data=data, moogle=self)
 
     def _get_gathering_level(self, level_id: int) -> GatheringItemLevel:
@@ -1250,9 +1267,9 @@ class Moogle(Generic, GarlandToolsAsync):
             level_id,
             len(self._gathering_item_levels),
         )
-        data: Optional[DataTypeAliases] = self._gathering_item_levels.get(str(level_id), None)
 
-        if data is None or ("id" not in data or "stars" not in data or "gathering_item_level" not in data):
+        data: Optional[DataTypeAliases] = self._gathering_item_levels.get(str(level_id), None)
+        if data is None or ("stars" not in data or "gathering_item_level" not in data):
             raise MoogleLookupError(str(level_id), "level_id", "_get_gathering_level", self)
         return GatheringItemLevel(data=data, moogle=self)
 
@@ -1264,6 +1281,7 @@ class Moogle(Generic, GarlandToolsAsync):
             spot_id,
             len(self._fishing_spot),
         )
+
         data: Optional[DataTypeAliases] = self._fishing_spot.get(str(spot_id), None)
         if data is None or "fishing_spot_category" not in data:
             raise MoogleLookupError(str(spot_id), "spot_id", "_get_fishing_spot", self)
@@ -1295,7 +1313,7 @@ class Moogle(Generic, GarlandToolsAsync):
             raise MoogleLookupError(str(place_id), "place_id", "_get_place_name", self)
         return PlaceName(data=data, moogle=self)
 
-    def _is_fishable(self, item_id: int) -> Fishing:
+    def _is_fishable(self, item_id: int) -> Fishing | None:
         LOGGER.debug(
             "<%s.%s> | Searching... item_id: %s | entries: %s ",
             __class__.__name__,
@@ -1306,14 +1324,15 @@ class Moogle(Generic, GarlandToolsAsync):
 
         key: Optional[str | int] = self._fish_params_ref.get(item_id, None)
         if key is None:
-            raise MoogleLookupError(str(item_id), "item_id", "_is_fishable", self)
+            return None
+            # raise MoogleLookupError(str(item_id), "item_id", "_is_fishable", self)
 
         data: Optional[DataTypeAliases] = self._fish_params.get(str(key), None)
         if data is None or "fishing_spot" not in data:
             raise MoogleLookupError(str(key), "item_id", "_is_fishable", self)
         return Fishing(data=data, angler=self._angler, moogle=self)
 
-    def _is_spearfishing(self, item_id: int) -> SpearFishing:
+    def _is_spearfishing(self, item_id: int) -> SpearFishing | None:
         LOGGER.debug(
             "<%s.%s> | Searching... item_id: %s | entries: %s ",
             __class__.__name__,
@@ -1323,13 +1342,15 @@ class Moogle(Generic, GarlandToolsAsync):
         )
         key: Optional[str | int] = self._spearfishing_items_ref.get(item_id, None)
         if key is None:
-            raise MoogleLookupError(str(item_id), "item_id", "_is_spearfishing", self)
+            return None
+            # raise MoogleLookupError(str(item_id), "item_id", "_is_spearfishing", self)
+
         data: Optional[DataTypeAliases] = self._spearfishing_items.get(str(key), None)
         if data is None or "is_visible" not in data:
             raise MoogleLookupError(str(key), "item_id", "_is_spearfishing", self)
         return SpearFishing(data=data, angler=self._angler, moogle=self)
 
-    def _is_gatherable(self, item_id: int) -> GatheringItem:
+    def _is_gatherable(self, item_id: int) -> GatheringItem | None:
         LOGGER.debug(
             "<%s.%s> | Searching... item_id: %s | entries: %s ",
             __class__.__name__,
@@ -1339,9 +1360,10 @@ class Moogle(Generic, GarlandToolsAsync):
         )
         key: Optional[str | int] = self._gathering_items_ref.get(item_id, None)
         if key is None:
-            raise MoogleLookupError(str(item_id), "item_id", "_is_gatherable", self)
-        data: Optional[DataTypeAliases] = self._gathering_items.get(str(key), None)
+            return None
+            # raise MoogleLookupError(str(item_id), "item_id", "_is_gatherable", self)
 
+        data: Optional[DataTypeAliases] = self._gathering_items.get(str(key), None)
         if data is None or ("gathering_item_level" not in data or "quest" not in data or "is_hidden" not in data):
             raise MoogleLookupError(str(key), "item_id", "_is_gatherable", self)
         return GatheringItem(data=data, moogle=self)
@@ -1377,8 +1399,8 @@ class Moogle(Generic, GarlandToolsAsync):
         """
         if isinstance(data, bytes):
             data = data.decode(encoding="utf-8")
+
         keys = data.split("\n")[0]
-        file = data
 
         if omit_inv_locs is None:
             omit_inv_locs = ATOOLS_OMIT_INV_LOCS
@@ -1388,14 +1410,15 @@ class Moogle(Generic, GarlandToolsAsync):
 
         # Keys= "Favorite?", "Icon", "Name", "Type", "Total Quantity Available", "Source", "Inventory Location"
         # We know the structure of res to be Iterator[AllagonToolsInventoryCSV].
-        _keys: list[str] = keys.strip().replace("?", "").lower().replace(" ", "_").split(",")
-        res: Iterator[AllagonToolsInventoryCSV] = csv.DictReader(file, fieldnames=_keys)  # type: ignore[reportAssignmentType]
+        # _keys: list[str] = keys.strip().replace("?", "").lower().replace(" ", "_").split(",")
+        _keys: list[str] = ["favorite", "icon", "name", "type", "total_quantity_available", "source", "inventory_location"]
+        res: Iterator[AllagonToolsInventoryCSV] = csv.DictReader(data.split("\n")[1:], fieldnames=_keys)  # type: ignore[reportAssignmentType]
         LOGGER.debug(
             "<%s.%s> | Reading CSV data. | keys: %s | data size: %s",
             __class__.__name__,
             "_parse_atools_csv",
             _keys,
-            len(file),
+            len(data[len(keys) :]),
         )
         inventory: list[InventoryItem] = []
         for entry in res:
@@ -1405,18 +1428,15 @@ class Moogle(Generic, GarlandToolsAsync):
             # Given we are using item names; there is a "small" chance it will return incorrect items
             # but it should find everything as it's directly from the game.
             try:
-                item_id: Item = self.get_item(item=entry["name"], limit_results=1, match=95)
+                item: Item = self.get_item(item=entry["name"], limit_results=1, match=95)
             except MoogleLookupError:
                 LOGGER.warning("<%s.%s> | Failed to lookup item name. | item: %s", __class__.__name__, "_parse_atools_csv", entry["name"])
                 continue
-
-            item = InventoryItem(item_id=item_id.id, data=entry)
+            inv_item = InventoryItem(item_id=item.id, data=entry, moogle=self)
             # If we have inventory locations to omit and our item is NOT in that list of locations, lets add it to our results.
-            if item.location not in omit_inv_locs:
-                inventory.append(item)
+            if inv_item.location not in omit_inv_locs:
+                inventory.append(inv_item)
 
-        if isinstance(file, TextIOWrapper):
-            file.close()
         return inventory
 
     async def get_current_marketboard(
@@ -1677,14 +1697,20 @@ class Moogle(Generic, GarlandToolsAsync):
     async def currency_spender(
         self,
         currency: Currency = Currency.Allagan_Tomestone_of_Poetics,
+        patch: Patch = Patch.Dawntrail,
         **kwargs: Unpack[CurMarketBoardParams],
     ) -> list[str]:
-        """currency_spender _summary_.
+        """Returns a list of items with the highest sale velocity per World/Datacenter purchased with the specified currency.
+
+        .. warning::
+            This function can take a while to process, especially if filtering results with a patch.
 
         Parameters
         ----------
         currency: :class:`Currency`, optional
             The currency to look up for potential spending, by default Currency.Allagan_Tomestone_of_Poetics.
+        patch: :class:`Patch`, optional
+            The patch at which to filter results "up to", so ARR -> Dawntrail items would return, by default Patch.Dawntrail.
         **kwargs: :class:`Unpack[CurMarketBoardParams]`
             Any additional params to pass to `<UniversalisAPI.get_bulk_current_data()>`.
 
@@ -1692,21 +1718,27 @@ class Moogle(Generic, GarlandToolsAsync):
         Returns
         -------
         :class:`list[str]`
-            _description_.
+            A list of strings sorted by largest sale velocity.
 
         """
-        item_response: ItemResponse = await self._garlandtools.item(item_id=currency.value)
-        item_data: list[TradeShops] | None = item_response["item"].get("tradeCurrency", None)
-        if item_data is None:
+        currency_response: ItemResponse = await self._garlandtools.item(item_id=currency.value)
+        trade_data: list[TradeShops] | None = currency_response["item"].get("tradeCurrency", None)
+        if trade_data is None:
             return []
 
         items: list[int] = []
-        for entry in item_data:
+        for entry in trade_data:
             for i in entry["listings"]:
                 items.extend([e["id"] for e in i["item"] if e["id"] not in items])
 
-        market = UniversalisAPI()
-        res: list[CurrentData] | CurrentData = await market.get_bulk_current_data(items=items, **kwargs)
+        # Filtering of the Items by Patch.
+        market_ids: list[int] = []
+        for item in items:
+            itemres: ItemResponse = await self._garlandtools.item(item_id=item)
+            if itemres["item"]["patch"] <= patch.value:
+                market_ids.append(itemres["item"]["id"])
+
+        res: list[CurrentData] | CurrentData = await self._universalis.get_bulk_current_data(items=market_ids, **kwargs)
         output: list[str] = []
         if isinstance(res, list):
             res = sorted(res, key=lambda x: x.regular_sale_velocity, reverse=True)
@@ -1718,8 +1750,8 @@ class Moogle(Generic, GarlandToolsAsync):
                     else entry.last_upload_time
                 )
                 data: str = (
-                    f"Name: {entry.name}[{entry.item_id}] | Timestamp: {timestamp} | Sale Velocity: {entry.regular_sale_velocity} |"
-                    f"Avg Price Cur/Hist/Min: {entry.current_average_price}/{entry.average_price}/{entry.min_price}"
+                    f"Name: {entry.name}[{entry.item_id}] | Timestamp: {timestamp} | Sale Velocity: {entry.regular_sale_velocity} | "
+                    f"Avg Price Cur | Hist | Min: {entry.current_average_price} | {entry.average_price} | {entry.min_price}"
                 )
                 if data not in output:
                     output.append(data)
@@ -2947,17 +2979,36 @@ class InventoryItem(Object):
     source: str
     location: InventoryLocation
 
+    _locations: ClassVar[dict[str, InventoryLocation]] = {
+        "armory": InventoryLocation.armory,
+        "armoire": InventoryLocation.armoire,
+        "bag": InventoryLocation.bag,
+        "currency": InventoryLocation.currency,
+        "crystals": InventoryLocation.crystals,
+        "equipped gear": InventoryLocation.equipped_gear,
+        "free company": InventoryLocation.free_company,
+        "glamour chest": InventoryLocation.glamour_chest,
+        "market": InventoryLocation.market,
+        "premium saddlebag left": InventoryLocation.premium_saddlebag_left,
+        "premium saddlebag right": InventoryLocation.premium_saddlebag_right,
+        "saddlebag left": InventoryLocation.saddlebag_left,
+        "saddlebag right": InventoryLocation.saddlebag_right,
+        "housing interior placed": InventoryLocation.housing_interior_placed,
+        "housing interior storeroom": InventoryLocation.housing_interior_stored,
+        "housing exterior placed": InventoryLocation.housing_exterior_placed,
+        "housing exterior storeroom": InventoryLocation.housing_exterior_stored,
+    }
+
     __slots__ = (
-        "id",
-        "location",
+        "inventory_location",
         "name",
-        "quality",
-        "quantity",
         "source",
+        "total_quantity_available",
+        "type",
     )
 
-    def __init__(self, item_id: int, data: AllagonToolsInventoryCSV) -> None:
-        """Build your Partial Item object.
+    def __init__(self, item_id: int, data: AllagonToolsInventoryCSV, **kwargs: Unpack[ObjectParams]) -> None:
+        """Build your InventoryItem object.
 
         Parameters
         ----------
@@ -2965,23 +3016,32 @@ class InventoryItem(Object):
             The Final Fantasy 14 item id.
         data: :class:`AllagonToolsInventoryCSV`
             The JSON data.
+        **kwargs: :class:`Unpack[ObjectParams]`
+            Any additional functionality such as a :class:`Angler` object or :class:`UniversalisAPI` object.
+            - By default the :class:`Moogle` object is required for functionality sake.
 
         """
+        super().__init__(data, moogle=kwargs["moogle"])
         self.id = item_id
-        self._repr_keys = ["name", "id", "location", "quantity", "source"]
+        self._repr_keys = ["name", "id", "quality", "quantity", "location", "source"]
         for key in self.__slots__:
             value: Optional[int | bool | str] = data.get(key, None)
             if value is None:
                 continue
+
             if key.lower() == "type":
                 if isinstance(value, str) and value.lower() == "nq":
                     self.quality = ItemQuality.NQ
+
                 elif isinstance(value, str) and value.lower() == "hq":
                     self.quality = ItemQuality.HQ
-            elif key.lower().startswith("total_quantity") and isinstance(value, int):
-                self.quantity = value
+
+            elif key.lower() == "total_quantity_available":
+                self.quantity = int(value)
+
             elif key.lower() == "inventory_location" and isinstance(value, str):
                 self.location = self._convert_inv_loc_to_enum(location=value)
+
             else:
                 setattr(self, key, value)
 
@@ -3000,30 +3060,10 @@ class InventoryItem(Object):
             The converted inventory location as an Enum.
 
         """
-        if location.lower().startswith("bag"):
-            return InventoryLocation.bag
-        if location.lower().startswith("glamour"):
-            return InventoryLocation.armoire
-        if location.lower().startswith("saddlebag"):
-            if location.lower().startswith("premium"):
-                if "left" in location.lower():
-                    return InventoryLocation.premium_saddlebag_left
-                return InventoryLocation.premium_saddlebag_right
-            if "left" in location.lower():
-                return InventoryLocation.saddlebag_left
-            return InventoryLocation.saddlebag_right
-        if location.lower().startswith("armory"):
-            return InventoryLocation.armory
-        if location.lower().startswith("market"):
-            return InventoryLocation.market
-        if location.lower().startswith("free"):
-            return InventoryLocation.free_company
-        if location.lower().startswith("currency"):
-            return InventoryLocation.currency
-        if location.lower().startswith("equipped"):
-            return InventoryLocation.equipped_gear
-        if location.lower().startswith("crystals"):
-            return InventoryLocation.crystals
+        for key, value in InventoryItem._locations.items():
+            if location.lower().startswith(key):
+                return value
+
         return InventoryLocation.null
 
 

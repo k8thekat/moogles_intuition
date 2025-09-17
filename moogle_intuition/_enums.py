@@ -26,13 +26,13 @@ __all__ = (
     "CraftType",
     "Currency",
     "EquipSlotCategory",
+    "Expansion",
     "FishingSpotCategory",
     "GrandCompany",
     "InventoryLocation",
     "ItemSeries",
     "ItemSpecialBonus",
     "ItemUICategory",
-    "Patch",
 )
 
 
@@ -387,10 +387,28 @@ class ItemUICategory(Enum):
     Outfits = 112
 
 
-class Patch(Enum):
+class Expansion(Enum):
     A_Realm_Reborn = 2
     Heavensward = 3
     Stormblood = 4
     Shadowbringers = 5
     Endwalker = 6
     Dawntrail = 7
+
+
+class ColorRef(Enum):
+    Acorn_Brown = "8E581B00"
+    Chestnut_Brown = "3D290DFF"
+    Chocolate_Brown = "6E3D2400"
+    Gloom_Purple = "51456000"
+    Goobbue_Grey = "89878400"
+    Iris_Purple = "B79EBC00"
+    Loam_Brown = "3F332900"
+    Lotus_Pink = "FECEF500"
+    Orchard_Brown = "64421600"
+    Plum_Purple = "79526C00"
+    Qiqirn_Brown = "996E3F00"
+    Regal_Purple = "66304EFF"
+    Rose_Pink = "E69F9600"
+    Snow_White = "E4DFD000"
+    Soot_Black = "2B292300"

@@ -8,18 +8,19 @@
         {
             "id": "variableID",
             "type": "pickString",
-            "description": "What function to run...",
+            "description": "What function to run inside `./local.py`",
             "default": "-local",
             "options": [
                 "-local",
                 "-build",
+                "-dev",
                 "--upgrade",
             ]
         },
         {
             "id": "log_level",
             "type": "pickString",
-            "description": "Set the logging level...",
+            "description": "Set the Python logging level, default is `INFO`.",
             "default": "-info",
             "options": [
                 "-info",
@@ -29,7 +30,7 @@
         {
             "id": "*args",
             "type": "promptString",
-            "description": "Any additional args, if applicable.",
+            "description": "Any additional args or package name for (`--upgrade`), if applicable.",
             "default": "",
         }
     ],
@@ -37,7 +38,7 @@
         {
             "type": "debugpy",
             "request": "launch",
-            "name": "Run local.py",
+            "name": "Run ./local.py file in debugpy mode.",
             "program": "./local.py",
             "args": [
                 "${input:log_level}",

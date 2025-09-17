@@ -20,8 +20,8 @@ Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA
 
 from __future__ import annotations
 
+import base64
 import csv
-import datetime
 import json
 import logging
 import statistics
@@ -31,14 +31,17 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal, NamedTuple, Optional, 
 import aiohttp
 from aiohttp_client_cache.session import CachedSession
 from async_garlandtools import GarlandToolsAsync, IconType, Object as GTObject
-from async_garlandtools._types import ItemResponse
-from async_universalis import CurrentData, HistoryData, ItemQuality, UniversalisAPI
+from async_garlandtools._types import Item as GTItem, ItemResponse, PartialTypeIDObj
+from async_garlandtools.errors import GarlandToolsKeyError
+from async_universalis import CurrentData, CurrentDataEntries, DataCenter, HistoryData, ItemQuality, MultiPart, UniversalisAPI
+from async_universalis.errors import UniversalisError
 from thefuzz import fuzz  # type: ignore[reportMissingStubFile]
 
+from moogle_intuition._types import Crafting, ShoppingCurrency, Vendor
 from moogle_intuition.errors import MoogleLookupError
 from moogle_intuition.ff14angler._types import FishingData
 
-from ._enums import CraftType, Currency, EquipSlotCategory, FishingSpotCategory, InventoryLocation, Patch
+from ._enums import CraftType, Currency, EquipSlotCategory, Expansion, FishingSpotCategory, InventoryLocation
 from .ff14angler import Angler, AnglerBaits, AnglerFish
 
 if TYPE_CHECKING:
@@ -47,29 +50,34 @@ if TYPE_CHECKING:
 
     from aiohttp import ClientResponse
     from aiohttp.client import _RequestOptions as AiohttpRequestOptions  # pyright: ignore[reportPrivateUsage]
-    from async_garlandtools._types import ItemResponse, TradeShops
-    from async_universalis import CurrentData, CurrentDataEntries, DataCenter, HistoryData, HistoryDataEntries, World
+    from async_garlandtools._types import Item as GTItem, ItemResponse, PartialTypeIDObj, TradeShops
+    from async_universalis import CurrentDataEntries, HistoryData, HistoryDataEntries, World
 
     from moogle_intuition.ff14angler._types import FishingData
 
     from ._types import (
         AllagonToolsInventoryCSV,
+        Crafting,
         CSVParseParams,
         CurMarketBoardParams,
         FishingSpotData,
         FishParameterData,
+        FurnitureFixtures,
         GatheringItemData,
         GatheringItemLevelData,
         HistMarketBoardParams,
         ItemData,
         ItemLevelData,
+        MakePlaceData,
         ObjectParams,
         PlaceNameData,
         RecipeData,
         RecipeLevelData,
         RecipeLookUpData,
+        ShoppingCurrency,
         SpearFishingItemData,
         SpearFishingNotebookData,
+        Vendor,
     )
 
     DataTypeAliases = Union[
@@ -293,8 +301,8 @@ class Generic:
 
     # Item Handling.
     _items: dict[str, DataTypeAliases]
-    # I am storing "item id" : "name"
     _items_ref: dict[str | int, str | int]
+    "Quick Ref for Name lookups.  `item_name[str]` : `item_id[int]`"
     # Recipe Handling.
     # I am storing "Recipe ID" : "Item Result ID"
     # recipe_dict: dict[str, int]  # ? Unsure why this was commented out, need to validate usage.
@@ -518,6 +526,8 @@ class Builder(Generic):
         format_keys: bool = True,
     ) -> tuple[dict[str, dict[str, int | str | list[int] | bool | None]], list[str], list[str]]:
         """Parse a CSV file, breaking out the Keys and Types to be return as a tuple for turning into Typed Dicts.
+
+        - Purely for XIV Data Mining CSV structure.
 
         .. note::
             All keys, values and types are sanitized via `<Builder.sanitize_key_name()`,
@@ -973,15 +983,20 @@ class Moogle(Generic):
                 self._garlandtools = GarlandToolsAsync(session=session, cache_location=Path(__file__).parent)
             else:
                 self._garlandtools = GarlandToolsAsync(cache_location=Path(__file__).parent)
-                # TODO(@k8thekat): Address cached session being closed.
                 # This forces us to swap to a CachedSession object for all other usage.
                 session = self._garlandtools.session
+        else:
+            self._garlandtools = garlandtools
 
         if universalis is None:
             self._universalis = UniversalisAPI(session=session)
+        else:
+            self._universalis = universalis
 
         if angler is None:
             self._angler = Angler(session=session)
+        else:
+            self._angler = angler
 
         self._builder = Builder(session=session)
         # Create our empty itemcache.
@@ -994,7 +1009,7 @@ class Moogle(Generic):
         # ConnectionError
         # FileNotFoundError or Exists
         except Exception as e:  # noqa: BLE001
-            LOGGER.error("<%s.%s> | Failed to Build. | Exception: %s", __class__.__name__, "build", e)  # noqa: TRY400
+            LOGGER.error("<%s.%s> | Failed to Build. | Exception: %s", __class__.__name__, "build", e)
         return self
 
     async def __aexit__(  # noqa: D105
@@ -1023,9 +1038,10 @@ class Moogle(Generic):
 
         """
         await self._builder.file_validation()
-        self._items: dict[str, DataTypeAliases] = self._load_json(path=DATA_PATH.joinpath("item.json"))
 
-        self._items_ref: dict[str | int, str | int] = self._reference_dict(data=self._items, value_get="name")
+        # Item related dict/JSON
+        self._items: dict[str, DataTypeAliases] = self._load_json(path=DATA_PATH.joinpath("item.json"))
+        self._items_ref: dict[str | int, str | int] = self._reference_dict(data=self._items, value_get="name", flip_key_value=True)
 
         # Recipe related dict/JSON
         self._recipes = self._load_json(path=DATA_PATH.joinpath("recipe.json"))
@@ -1095,10 +1111,15 @@ class Moogle(Generic):
         for key, value in data.items():
             temp: Optional[str | int] = value.get(value_get, None)
 
+            if isinstance(temp, str):
+                temp = temp.lower()
+
             if temp is None:
                 continue
+
             if flip_key_value is True:
                 item_dict[temp] = key
+
             else:
                 item_dict[key] = temp
 
@@ -1147,14 +1168,15 @@ class Moogle(Generic):
         LOGGER.debug("<%s.%s> | Searching... query: %s |", __class__.__name__, "get_item", item)
         results: list[Item] = []
 
+        # Numeric Item lookup.
         # item: 10373 # magitek repair materials.
         if item.isnumeric():
             # So let's try to check the cache first for a matching item assuming we have an `id` value.
             cache: Optional[Item] = self._items_cache.get(item, None)
             if isinstance(cache, Item):
                 return cache
-            # TODO(@k8thekat): If I type hint `res`, parts of the code become unreachable and I need to understand why.
-            res = self._items.get(item, None)
+
+            res: DataTypeAliases | None = self._items.get(item, None)
             if res is not None and "level_item" in res:
                 cache = Item(data=res, moogle=self, universalis=self._universalis)
                 self._items_cache[item] = cache
@@ -1163,10 +1185,10 @@ class Moogle(Generic):
 
         # item_name's we have to get a reference since we are supporting partial string matching.
         # This handles the edge case of a perfect match, albeit unlikely.
-        ref: Optional[str | int] = self._items_ref.get(item, None)
+        ref: Optional[str | int] = self._items_ref.get(item.lower(), None)
         if ref is not None:
             res = self._items.get(str(ref), None)
-            if res is not None and "item_level" in res:
+            if res is not None and "level_item" in res:
                 cache = Item(data=res, moogle=self, universalis=self._universalis)
                 self._items_cache[item] = cache
                 return cache
@@ -1202,15 +1224,16 @@ class Moogle(Generic):
         # This section assumes we are using `item_name` given the above if check for `item_id`.
         # matches will be a list of "item_id's" that matched our query string.
         matches: list[str] = []
-        for key, value in self._items_ref.items():  # { item_id : item_name }
+        # self._items_ref = { item_name : item_id }
+        for item_name, item_id in self._items_ref.items():
             LOGGER.debug(
-                "Searching... key: %s | value: %s | query: %s",
-                key,
-                value,
+                "Searching... item_name: %s | item_id: %s | query: %s",
+                item_name,
+                item_id,
                 query,
             )
 
-            _value = str(value) if isinstance(value, int) else value
+            _value = str(item_name) if isinstance(item_name, int) else item_name
 
             ratio: int = fuzz.partial_ratio(s1=_value.lower(), s2=query.lower())  # pyright: ignore[reportUnknownMemberType]
 
@@ -1218,15 +1241,15 @@ class Moogle(Generic):
             # look the item up and see if we can find it, or return the key.
             if ratio >= match:
                 LOGGER.debug(
-                    "<%s.%s> | Searching... | key: %s | value: %s | ratio: %s | query: %s ",
+                    "<%s.%s> | Searching... | item_name: %s | item_id: %s | ratio: %s | query: %s ",
                     __class__.__name__,
                     "_partial_match",
-                    key,
+                    item_name,
                     _value,
                     ratio,
                     query,
                 )
-                matches.append(str(key))
+                matches.append(str(item_id))
                 continue
 
         if len(matches) == 0:
@@ -1250,6 +1273,24 @@ class Moogle(Generic):
         return JobRecipe(data=data, moogle=self)
 
     def _get_recipe(self, recipe_id: str) -> Recipe:
+        """Lookup a Final Fantasy 14 Recipe by ID.
+
+        Parameters
+        ----------
+        recipe_id: :class:`str`
+            The recipe ID.
+
+        Returns
+        -------
+        :class:`Recipe`
+            The :class:`Recipe` class object.
+
+        Raises
+        ------
+        MoogleLookupError
+            If the Recipe ID doesn't have the proper dict key.
+
+        """
         # I am storing str "Recipe ID" : int "Item Result ID"
         LOGGER.debug("<%s.%s> | Searching... recipe_id: %s | entries: %s", __class__.__name__, "_get_recipe", recipe_id, len(self._recipes))
 
@@ -1257,7 +1298,7 @@ class Moogle(Generic):
         if data is None or "item_result" not in data:
             raise MoogleLookupError(recipe_id, "recipe_id", "_get_recipe", self)
 
-        return Recipe(data=data, moogle=self)
+        return Recipe(recipe_id=recipe_id, data=data, moogle=self)
 
     def _get_gathering_level(self, level_id: int) -> GatheringItemLevel:
         LOGGER.debug(
@@ -1413,6 +1454,7 @@ class Moogle(Generic):
         # _keys: list[str] = keys.strip().replace("?", "").lower().replace(" ", "_").split(",")
         _keys: list[str] = ["favorite", "icon", "name", "type", "total_quantity_available", "source", "inventory_location"]
         res: Iterator[AllagonToolsInventoryCSV] = csv.DictReader(data.split("\n")[1:], fieldnames=_keys)  # type: ignore[reportAssignmentType]
+        next(res)  # force bypass the header/keys
         LOGGER.debug(
             "<%s.%s> | Reading CSV data. | keys: %s | data size: %s",
             __class__.__name__,
@@ -1432,18 +1474,148 @@ class Moogle(Generic):
             except MoogleLookupError:
                 LOGGER.warning("<%s.%s> | Failed to lookup item name. | item: %s", __class__.__name__, "_parse_atools_csv", entry["name"])
                 continue
-            inv_item = InventoryItem(item_id=item.id, data=entry, moogle=self)
+            # inv_item = InventoryItem(item_id=item.id, atools_data=entry, moogle=self)
+            inv_item = InventoryItem(item=item, atools_data=entry)
             # If we have inventory locations to omit and our item is NOT in that list of locations, lets add it to our results.
             if inv_item.location not in omit_inv_locs:
                 inventory.append(inv_item)
 
         return inventory
 
+    def _parse_makeplace_json(self, data: MakePlaceData) -> list[Item]:
+        """Parses MakePlace JSON data structure into a list of :class:`Item`.
+
+        .. note::
+            A simple `json.loads()` will suffice for passing in the required data.
+
+
+        Parameters
+        ----------
+        data: :class:`MakePlaceData`
+            The MakePlace JSON data..
+
+        Returns
+        -------
+        :class:`list[Item]`
+            A list of converted MakePlace data items.
+
+        """
+        items: list[Item] = []
+        keys: list[str] = ["interiorFixture", "interiorFurniture", "exteriorFixture", "exteriorFurniture"]
+        bad_keys: list[str] = ["district", "side door"]
+        for key in keys:
+            value: list[FurnitureFixtures] = data.get(key, None)
+            for entry in value:
+                if "type" in entry and entry["type"].lower() in bad_keys:
+                    continue
+                items.append(self.get_item(item=str(entry["itemId"]), limit_results=1))
+        return items
+
+    async def makeplace_create_itemlist(
+        self,
+        makeplace_data: MakePlaceData,
+        atools_data: bytes | str,
+        omit_item_names: Optional[list[str]] = None,
+        omit_inv_locs: Optional[list[InventoryLocation]] = None,
+    ) -> list[Item]:
+        """Compares MakePlace JSON data with Allagon Tools CSV data to find items not in your inventory.
+
+        Parameters
+        ----------
+        makeplace_data: :class:`MakePlaceData`
+            The MakePlace JSON data.
+        atools_data: :class:`bytes | str`
+            The Allagon Tools CSV data.
+        omit_inv_locs: :class:`Optional[list[InventoryLocationEnum]]`, optional
+            The inventory location of the item to omit from our returned list, by default is None.
+            - If `None`, will use the global `ATOOLS_OMIT_INV_LOCS`.
+        omit_item_names: :class:`Optional[list[str]]`, optional
+            Any item names to omit such as `Free Company Credits` as it's not apart of the XIV Item.json, by default [].
+            - If `None`, will use the global `ATOOLS_OMIT_ITEM_NAMES`.
+
+
+        Returns
+        -------
+        :class:`list[Item]`
+            A list of Moogles Intution :class:`Item` objects representing the items not found in your inventory.
+
+        """
+        # items: list[Item] = self._find_missing_items(
+        #     have_items=self._parse_atools_csv(atools_data, omit_inv_locs=omit_inv_locs, omit_item_names=omit_item_names),
+        #     want_items=self._parse_makeplace_json(makeplace_data),
+        # )
+        have_items: list[InventoryItem] = self._parse_atools_csv(atools_data, omit_inv_locs=omit_inv_locs, omit_item_names=omit_item_names)
+        want_items: list[Item] = self._parse_makeplace_json(makeplace_data)
+        for entry in have_items:
+            for want in want_items:
+                # We found an item we want in our inventory; so remove it from our want list.
+                # We want to make sure we have enough in our inventory. As Want Items will have duplicates of a
+                # single Item to simulate quantity needed.
+                if want.id == entry.id and entry.quantity > 0:
+                    want_items.remove(want)
+                    entry.quantity -= 1
+                    break
+        return want_items
+
+    # TODO(@k8thekat): TBD - See about improving iteration logic and data building.
+    def teamcraft_list(self, items: list[Item]) -> str:
+        """Create a Teamcraft Import URL from a list of dictionary.
+
+        .. note::
+            https://wiki.ffxivteamcraft.com/dev-stuff/import-a-list-from-another-tool
+
+        Parameters
+        ----------
+        items: :class:`list[ShoppingList]`
+            A list of dictionaries structured as :class:`ShoppingList` from `<Moogle.makeplace_shopping()>`.
+
+        Returns
+        -------
+        :class:`str`
+            The list of items converted into a FFXIV TeamCraft import list url.
+
+        """
+        # Item ID | Recipe ID | Quantity
+        # ; is the seperator between each item
+        # payload = ["10373", "null", "1"]
+        # payload = ["17962", "32308", "1"]
+        struct: dict[int, Crafting] = {}
+        payload: str = ""
+        for entry in items:
+            value = struct.get(entry.id, None)
+            if value is None:
+                struct[entry.id] = {"count": 1, "item": entry}
+            else:
+                value["count"] += 1
+            # payload += ",".join([str(entry["item_id"]), str("null" if recipe is None else recipe.id), str(entry["quantity"]) + ";"])
+        for item in struct:
+            value: Crafting | None = struct.get(item)
+            if value is None:
+                continue
+            payload += ",".join([
+                str(value["item"].id),
+                str("null" if value["item"].recipe is None else value["item"].recipe.id),
+                str(value["count"]) + ";",
+            ])
+
+        payload = payload[:-1]  # truncate the last semicolon
+        base_url = "https://ffxivteamcraft.com/import/"
+        LOGGER.debug("<%s.teamcraft_list> | Payload: %s", __class__.__name__, payload)
+        encoded = base64.b64encode(payload.encode("utf-8"))
+        LOGGER.debug("<%s.teamcraft_list> | Encoding: %s | Encoded: %s", __class__.__name__, "utf-8", encoded)
+        return f"{base_url}{encoded.decode('utf-8')}"
+
+    @overload
+    async def get_current_marketboard(self, items: str, **kwargs: Unpack[CurMarketBoardParams]) -> CurrentData | None: ...
+
+    @overload
+    async def get_current_marketboard(self, items: list[Item] | list[str], **kwargs: Unpack[CurMarketBoardParams]) -> MultiPart | None: ...
+
     async def get_current_marketboard(
         self,
-        items: str | list[Item | str],
+        items: str | list[Item] | list[str],
         **kwargs: Unpack[CurMarketBoardParams],
-    ) -> list[CurrentData] | CurrentData:
+    ) -> CurrentData | MultiPart | None:
         """Get Universalis current marketboard data.
 
         .. note::
@@ -1453,12 +1625,12 @@ class Moogle(Generic):
         ----------
         items: :class:`str | list[Item | str]`
             A list of item_names, by default None.
-        **kwargs: :class:`Unpack[MarketBoardParams]`
+        **kwargs: :class:`Unpack[CurMarketBoardParams]`
             Any additional params to pass to `<UniversalisAPI.get_bulk_current_data()>`.
 
         Returns
         -------
-        :class:`list[CurrentData] | CurrentData | None`
+        :class:`CurrentData | MultiPart | None`
             The Universalis JSON data represented as a class.
 
         """
@@ -1483,11 +1655,21 @@ class Moogle(Generic):
         )
         return await self._universalis.get_bulk_current_data(items=query, **kwargs)
 
+    @overload
+    async def get_history_marketboard(self, items: str, **kwargs: Unpack[HistMarketBoardParams]) -> HistoryData | None: ...
+
+    @overload
     async def get_history_marketboard(
         self,
-        items: str | list[Item | str],
+        items: list[Item] | list[str],
         **kwargs: Unpack[HistMarketBoardParams],
-    ) -> list[HistoryData] | HistoryData:
+    ) -> MultiPart | None: ...
+
+    async def get_history_marketboard(
+        self,
+        items: str | list[Item] | list[str],
+        **kwargs: Unpack[HistMarketBoardParams],
+    ) -> HistoryData | MultiPart | None:
         """Get Universalis history marketboard data.
 
         .. note::
@@ -1502,7 +1684,7 @@ class Moogle(Generic):
 
         Returns
         -------
-        :class:`list[HistoryData] | HistoryData | None`
+        :class:`HistoryData | MultiPart | None`
             The Universalis JSON data represented as a class.
 
         """
@@ -1643,63 +1825,13 @@ class Moogle(Generic):
             stacksize=optimal_stacksize,
         )
 
-    # TODO(@k8thekat): - Decide on a data structure for this function.
-    # If DC provided; break out pricing per World?
-    # Allow filtering by Expansion (if possible)
-    # Check "Last Purchase Dates"
-    async def cheapest_price(
-        self,
-        item: int | str | Item,
-        **kwargs: Unpack[CurMarketBoardParams],
-    ) -> list[str]:
-        """Returns the cheapest price per unit of an item.
-
-        Parameters
-        ----------
-        item: :class:`int | str`
-            _description_.
-        **kwargs: :class:`Unpack[CurMarketBoardParams]`
-            Any additional params to pass to `<UniversalisAPI.get_bulk_current_data()>`.
-
-        Returns
-        -------
-        str
-            Returns a string of entries seperated by newlines.
-
-        """
-        if isinstance(item, int):
-            item = str(item)
-        elif isinstance(item, Item):
-            item = str(item.id)
-
-        res: CurrentData = await self._universalis.get_current_data(item, **kwargs)
-        timestamp = (
-            res.last_upload_time.strftime("%d/%m | %H:%M(%Z)")
-            if isinstance(res.last_upload_time, datetime.datetime)
-            else res.last_upload_time
-        )
-
-        data: list[str] = [
-            (
-                f"Item: {res.name}[{item}] | Time: {timestamp} | World: {entry.world_name} | DC: {res.dc_name} "
-                f"| Quantity: {entry.quantity} | PricePU/Total: {entry.price_per_unit}/{entry.total + entry.tax}"
-            )
-            for entry in sorted(res.listings, key=lambda x: x.price_per_unit)
-        ]
-        return data
-
-    # TODO(@k8thekat): - Decide on a data structure for this function.
-    # If DC provided; break out pricing per World?
-    # Allow filtering by Expansion (if possible)
-    # Check "Last Purchase Dates"
-    # Class with listings; have Enum/func to sort listings(filter).
-
+    # TODO(@k8thekat): Clean up method code.
     async def currency_spender(
         self,
         currency: Currency = Currency.Allagan_Tomestone_of_Poetics,
-        patch: Patch = Patch.Dawntrail,
+        patch: Expansion = Expansion.Dawntrail,
         **kwargs: Unpack[CurMarketBoardParams],
-    ) -> list[str]:
+    ) -> dict[int, ShoppingCurrency] | None:
         """Returns a list of items with the highest sale velocity per World/Datacenter purchased with the specified currency.
 
         .. warning::
@@ -1710,52 +1842,83 @@ class Moogle(Generic):
         currency: :class:`Currency`, optional
             The currency to look up for potential spending, by default Currency.Allagan_Tomestone_of_Poetics.
         patch: :class:`Patch`, optional
-            The patch at which to filter results "up to", so ARR -> Dawntrail items would return, by default Patch.Dawntrail.
+            The patch at which to filter results "up to", so :class:`Patch.Dawntrail`
         **kwargs: :class:`Unpack[CurMarketBoardParams]`
             Any additional params to pass to `<UniversalisAPI.get_bulk_current_data()>`.
 
 
         Returns
         -------
-        :class:`list[str]`
-            A list of strings sorted by largest sale velocity.
+        :class:`list[ShoppingCurrency] | None`
+            A simple :class:`TypedDict` housing relevant information regarding the currency such as the cost and Universalis data.
 
         """
+        results: dict[int, ShoppingCurrency] = {}
         currency_response: ItemResponse = await self._garlandtools.item(item_id=currency.value)
         trade_data: list[TradeShops] | None = currency_response["item"].get("tradeCurrency", None)
         if trade_data is None:
-            return []
+            return None
 
-        items: list[int] = []
+        # items: list[int] = []
+        cost: int = 0
         for entry in trade_data:
             for i in entry["listings"]:
-                items.extend([e["id"] for e in i["item"] if e["id"] not in items])
+                cost = i["currency"][0]["amount"]
+                # items.extend([e["id"] for e in i["item"] if e["id"] not in items])
+                for e in i["item"]:
+                    if e["id"] not in results:
+                        # items.append(int(e["id"]))
+                        # print(f"Added {e['id']}")
+                        results[int(e["id"])] = {"cost": cost, "currency": currency, "marketboard": None}
 
         # Filtering of the Items by Patch.
-        market_ids: list[int] = []
-        for item in items:
+        # market_ids: list[int] = []
+        for item in results:
             itemres: ItemResponse = await self._garlandtools.item(item_id=item)
-            if itemres["item"]["patch"] <= patch.value:
-                market_ids.append(itemres["item"]["id"])
+            LOGGER.debug(
+                "Item: %s[%s] | Item Patch: %s | Patch: %s[%s](+1 offset) | Item Patch < Patch %s > %s",
+                itemres["item"]["name"],
+                itemres["item"]["id"],
+                itemres["item"]["patch"],
+                patch.name,
+                patch.value,
+                itemres["item"]["patch"],
+                patch.value + 1,
+            )
+            # Patch.value = 3 + 1 (4) Item patch is 3.4
+            if itemres["item"]["patch"] > patch.value + 1:
+                print("Remove because Patch", itemres["item"]["id"])
+                results.pop(itemres["item"]["id"])
+                # market_ids.append(itemres["item"]["id"])
 
-        res: list[CurrentData] | CurrentData = await self._universalis.get_bulk_current_data(items=market_ids, **kwargs)
-        output: list[str] = []
-        if isinstance(res, list):
-            res = sorted(res, key=lambda x: x.regular_sale_velocity, reverse=True)
+        # success = 0
+        # fail = 0
+        # for entry in results:
+        #     try:
+        #         res: CurrentData = await self._universalis.get_current_data(entry, **kwargs)
+        #         print(res.name, res.item_id, len(res.listings))
+        #         success += 1
+        #     except UniversalisError:
+        #         print(f"Failed Lookup: {entry}")
+        #         fail += 1
+        #         continue
+        # print(f"Total: {len(list(results))} | Success: {success} | Fail: {fail}")
+        print(f"Total: {len(list(results))}")
+        res: MultiPart | CurrentData | None = await self._universalis.get_bulk_current_data(items=list(results), **kwargs)
+        if isinstance(res, MultiPart):
+            print("Post MB Search:", len(res.items))
+            # print(f"Results Len:{len(results)} | Diff: {len(list(results)) - len(res.items)}")
+            for entry in res.items:
+                results[entry.item_id]["marketboard"] = entry
 
-            for entry in res:
-                timestamp: str | int = (
-                    entry.last_upload_time.strftime("%d/%m | %H:%M(%Z)")
-                    if isinstance(entry.last_upload_time, datetime.datetime)
-                    else entry.last_upload_time
-                )
-                data: str = (
-                    f"Name: {entry.name}[{entry.item_id}] | Timestamp: {timestamp} | Sale Velocity: {entry.regular_sale_velocity} | "
-                    f"Avg Price Cur | Hist | Min: {entry.current_average_price} | {entry.average_price} | {entry.min_price}"
-                )
-                if data not in output:
-                    output.append(data)
-        return output
+            # Remove entries from the dictionary that failed to be resolved.
+            print("Unresolved items:", len(res.unresolved_items))
+            for entry in res.unresolved_items:
+                # print(f"Removing {entry}")
+                results.pop(entry)
+        elif isinstance(res, CurrentData):
+            results[res.item_id]["marketboard"] = res
+        return results
 
 
 class Item(Object):
@@ -1786,7 +1949,7 @@ class Item(Object):
         If the item is in-disposable or not.
     can_be_hq: :class:`int`
         If the item can be high-quality or not.
-    dye_count: :class:`int`
+    dye_count: :obj:`int`
         The number of dye slots.
     is_collectable: :class:`bool`
         If the item is collectable or not.
@@ -1798,9 +1961,6 @@ class Item(Object):
         If the item supports advanced melding or not.
     is_glamourous: :class:`bool`
         If the item can be used in glamour or not.
-
-    Properties
-    ----------
     recipe: :class:`Optional[JobRecipe]`
         Any recipe information related to the item, if applicable.
     fishing: :class:`Optional[Fishing]`
@@ -1991,6 +2151,15 @@ class Item(Object):
         return f"https://ffxiv.consolegameswiki.com/wiki/{self.name.replace(' ', '_')}"
 
     @property
+    def universalis_url(self) -> str:
+        """A url link to the item on Universalis.app, if applicable.
+
+        .. note::
+            May fail to resolve on items that are not marketable.
+        """
+        return f"https://universalis.app/market/{self.id}"
+
+    @property
     def mb_current(self) -> Optional[CurrentData]:
         """Cached current marketboard data, if applicable."""
         try:
@@ -2006,13 +2175,13 @@ class Item(Object):
         except AttributeError:
             return None
 
-    async def get_current_marketboard(self, **kwargs: Unpack[CurMarketBoardParams]) -> CurrentData:
+    async def get_current_marketboard(self, **kwargs: Unpack[CurMarketBoardParams]) -> Optional[CurrentData]:
         """Retrieve the current Marketboard data for this item, while also setting the `<Item.mb_current>` property.
 
         Parameters
         ----------
-        **kwargs: :class:`Unpack[MarketBoardParams]`
-            Any additional parameters to change the results of the data.
+        **kwargs: :class:`Unpack[CurMarketBoardParams]`
+            Any additional params to pass to `<UniversalisAPI.get_bulk_current_data()>`.
 
         Returns
         -------
@@ -2020,7 +2189,10 @@ class Item(Object):
             The JSON response converted into a :class:`CurrentData` object.
 
         """
-        self._mb_current = await self._moogle._universalis.get_current_data(item=self.id, **kwargs)
+        try:
+            self._mb_current = await self._moogle._universalis.get_current_data(item=self.id, **kwargs)
+        except UniversalisError:
+            return None
         return self._mb_current
 
     async def get_history_marketboard(self, **kwargs: Unpack[HistMarketBoardParams]) -> HistoryData:
@@ -2048,7 +2220,7 @@ class Item(Object):
         except AttributeError:
             return None
 
-    async def get_garlandtools(self) -> ItemResponse:
+    async def get_garlandtools_data(self) -> Optional[ItemResponse]:
         """Retrieve GarlandTools API data for this item, while also setting the `<Item.garlandtools_data>` property.
 
         Returns
@@ -2057,7 +2229,11 @@ class Item(Object):
             A JSON response.
 
         """
-        self._garlandtools_data = await self._moogle._garlandtools.item(item_id=self.id)
+        try:
+            self._garlandtools_data = await self._moogle._garlandtools.item(item_id=self.id)
+        except GarlandToolsKeyError:
+            LOGGER.warning("<%s.%s> | Failed to get GarlandTools Data. | Item: %s", __class__.__name__, "get_garlandtools_data", self.id)
+            return None
         return self._garlandtools_data
 
     async def get_icon(self) -> Optional[GTObject]:
@@ -2069,11 +2245,81 @@ class Item(Object):
             A GarlandTools API Object.
 
         """
-        if self._garlandtools_data is not None:
-            icon_id: int = self._garlandtools_data["item"]["icon"]
-            res: GTObject = await self._moogle._garlandtools.icon(icon_id=icon_id, icon_type=IconType.item)
-            return res
-        return None
+        await self.get_garlandtools_data()
+        if self.garlandtools_data is None:
+            return None
+        icon_id: int = self.garlandtools_data["item"]["icon"]
+        res: GTObject = await self._moogle._garlandtools.icon(icon_id=icon_id, icon_type=IconType.item)
+        return res
+
+    async def get_vendors(self) -> list[Vendor] | None:
+        """Get GarlandTools Vendor information, if applicable.
+
+        Returns
+        -------
+        :class:`list[Vendor] | None`
+            A list of :class:`Vendor` to access information related to the vendor.
+
+        """
+        await self.get_garlandtools_data()
+        if self.garlandtools_data is None:
+            return None
+
+        vendors_ids: list[int] | None = self.garlandtools_data["item"].get("vendors", None)
+        if vendors_ids is None:
+            return None
+
+        partials: list[PartialTypeIDObj] | None = self.garlandtools_data.get("partials", None)
+        if partials is None:
+            return None
+
+        item: GTItem = self.garlandtools_data["item"]
+        result: list[Vendor] = []
+        for value in partials:
+            if int(value["id"]) in vendors_ids:
+                result.append({  # noqa: PERF401 - Easier to read this way.
+                    "name": value["obj"].get("n", "N/A"),
+                    "id": value["id"],
+                    "price": item["price"],
+                    "shop_name": str(value["obj"].get("t", "N/A")),
+                    "url": f"https://www.garlandtools.org/db/#npc/{value['id']}",
+                })
+        return result
+
+    async def get_tradeshops(self) -> list[Vendor] | None:
+        """Get GarlandTools Trade shop information, if applicable.
+
+        Returns
+        -------
+        :class:`list[Vendor] | None`
+            A list of :class:`Vendor` to access information related to the vendor.
+
+        """
+        await self.get_garlandtools_data()
+        if self.garlandtools_data is None:
+            return None
+
+        trade_shops: list[TradeShops] | None = self.garlandtools_data["item"].get("tradeShops", None)
+        if trade_shops is None:
+            return None
+
+        partials: list[PartialTypeIDObj] | None = self.garlandtools_data.get("partials", None)
+        if partials is None:
+            return None
+
+        result: list[Vendor] = []
+        for entry in trade_shops:
+            for shop_info in partials:
+                if int(shop_info["id"]) in entry["npcs"]:
+                    result.append({  # noqa: PERF401 - Easier to read this way.
+                        "name": shop_info["obj"].get("n", "N/A"),
+                        "id": shop_info["id"],
+                        "price": entry["listings"][0]["currency"][0]["amount"],
+                        "currency": self._moogle.get_item(item=str(entry["listings"][0]["currency"][0]["id"]), limit_results=1),
+                        "shop_name": str(shop_info["obj"].get("t", "N/A")),
+                        "url": f"https://www.garlandtools.org/db/#npc/{shop_info['id']}",
+                    })
+        return result
 
 
 class JobRecipe(Object):
@@ -2116,8 +2362,18 @@ class JobRecipe(Object):
     WVR: Optional[Recipe]
     ALC: Optional[Recipe]
     CUL: Optional[Recipe]
+    _id: Optional[int]
 
     __slots__ = ("ALC", "ARM", "BSM", "CRP", "CUL", "GSM", "LTW", "WVR")
+
+    @property
+    def id(self) -> Optional[int]:
+        """The first occurence of a job Recipe ID during class initialization, if applicable."""
+        return self._id
+
+    @id.setter
+    def id(self, value: int) -> None:
+        self._id = value
 
     def __init__(self, data: RecipeLookUpData, **kwargs: Unpack[ObjectParams]) -> None:
         """Build your Job Recipe object.
@@ -2132,13 +2388,90 @@ class JobRecipe(Object):
 
         """
         super().__init__(data=data, moogle=kwargs["moogle"])
+        self._id = None
+        self._repr_keys = ["id"]
         for key in self.__slots__:
             value: Optional[str | int | bool] = data.get(key, None)
             if value is None:
                 continue
             if isinstance(value, int) and value != 0:
+                if self.id is None:
+                    self.id = value
                 # This takes the value data and builds our FFXIVRecipe class from the raw JSON stored on our Moogle class.
                 setattr(self, key, self._moogle._get_recipe(str(value)))
+
+    async def get_crafting_cost(
+        self,
+        results: Optional[dict[int, Crafting]] = None,
+        **kwargs: Unpack[CurMarketBoardParams],
+    ) -> Optional[dict[int, Crafting]]:
+        """Fetches purchasing information related to the Recipe and it's ingredients.
+
+        Retrieve Item, Marketboard, Vendor and Tradeshop information and returns the data in a useful structure.
+
+        .. note::
+            This relies on the `self.id` property to resolve.
+
+
+        Parameters
+        ----------
+        results: :class:`Optional[dict[int, CraftingCost]]`, optional
+            Any data from a previous call of the function, by default None.
+        **kwargs: :class:`Unpack[CurMarketBoardParams]`
+            Any additional params to pass to `<UniversalisAPI.get_bulk_current_data()>`.
+
+        Returns
+        -------
+        :class:`Optional[dict[int, CraftingCost]]`
+            Information about every Item needed to craft this Recipe.
+
+        """
+        if self.id is None:
+            return None
+        # First iteration; set's the data structure up.
+        if results is None:
+            results = {}
+
+        # Getting the items Recipe, if applicable.
+        try:
+            recipe: Recipe = self._moogle._get_recipe(recipe_id=str(self.id))
+        except MoogleLookupError:
+            LOGGER.error("<%s.%s> | Failed to get Recipe data. | Recipe ID: %s", __class__.__name__, "get_crafting_cost", self.id)
+            return None
+
+        # We are getting all the items and ingredients to craft the item.
+        for idx in range(8):
+            item_id: int = getattr(recipe, f"item_ingredient{idx}", 0)
+            quantity: int = getattr(recipe, f"amount_ingredient{idx}", 0)
+            if item_id == 0:
+                continue
+
+            item: Item = self._moogle.get_item(item=str(item_id), limit_results=1)
+            # This is for the item if it has it's own recipe
+            if item.recipe is not None:
+                # If we don't have it in our results.(Prevent Recursion)
+                # We set it's Craftable to True and then call the function again.
+                if results.get(item.id, None) is None:
+                    results[item.id] = {"item": item, "count": quantity}
+                    res: dict[int, Crafting] | None = await self.get_crafting_cost(results=results, **kwargs)
+                    if res is not None:
+                        results.update(res)
+            else:
+                # Doesn't have a recipe; so set craftable to False.
+                results[item.id] = {"item": item, "count": quantity}
+
+            vendors: list[Vendor] | None = await item.get_vendors()
+            if vendors is not None:
+                results[item.id].update({"vendors": vendors})
+            tradeshops: list[Vendor] | None = await item.get_tradeshops()
+            if tradeshops is not None:
+                results[item.id].update({"tradeshops": tradeshops})
+
+            await item.get_current_marketboard(**kwargs)
+            if item.mb_current is not None:
+                results[item.id].update({"marketboard": item.mb_current})
+
+        return results
 
 
 class Recipe(Object):
@@ -2147,15 +2480,16 @@ class Recipe(Object):
     .. note::
         Inherits attributes and functions from :class:`Object`.
 
-
     Attributes
     ----------
+    id: :class:`int`
+        The Final Fantasy 14 Recipe ID.
     craft_type: :class:`Optional[CraftType]`, optional
         The Job this recipe belongs too, if applicable.
     recipe_level_table: :class:`RecipeLevelData`
         The characteristics and details about the recipe, such as difficulty and craftsmanship required.
     item_result: :class:`int`
-        The item ID.
+        The resulting Final Fantasy 14 item ID.
     amount_result: :class:`int`
         The number of items recieved after completing the crafting recipe.
     item_ingredient0: :class:`int`
@@ -2205,6 +2539,7 @@ class Recipe(Object):
 
     """
 
+    id: int
     craft_type: Optional[CraftType]
     recipe_level_table: RecipeLevelData
     item_result: int
@@ -2245,6 +2580,7 @@ class Recipe(Object):
         "can_hq",
         "can_quick_synth",
         "craft_type",
+        "id",
         "is_expert",
         "is_specialization_required",
         "item_ingredient0",
@@ -2261,11 +2597,13 @@ class Recipe(Object):
         "status_required",
     )
 
-    def __init__(self, data: RecipeData, **kwargs: Unpack[ObjectParams]) -> None:
+    def __init__(self, recipe_id: str, data: RecipeData, **kwargs: Unpack[ObjectParams]) -> None:
         """Build your Recipe object.
 
         Parameters
         ----------
+        recipe_id: :class:`int`
+            The Final Fantasy 14 recipe id.
         data: :class:`RecipeData`
             The JSON data.
         **kwargs: :class:`Unpack[ObjectParams]`
@@ -2274,6 +2612,7 @@ class Recipe(Object):
 
         """
         super().__init__(data=data, moogle=kwargs["moogle"])
+        self.id = int(recipe_id)
         # This list to control the amount of information we return via `__str__()` and `__repr__()` dunder methods.
         self._repr_keys = ["craft_type", "item_result", "is_expert", "item_required", "amount_result"]
         self._repr_keys.extend([f"item_ingredient{idx}" for idx in range(8)])
@@ -2283,17 +2622,17 @@ class Recipe(Object):
             if value is None:
                 continue
             if isinstance(value, int):
-                if (
-                    key in ["is_specialization_required", "item_result", "item_required"] or key.startswith("item_ingredient")
-                ) and value != 0:
-                    setattr(self, key, value)
-                    # try:
-                    #     setattr(self, key, self._moogle.get_item(item=str(value), limit_results=1))
-                    # except MoogleLookupError:
-                    #     LOGGER.warning("<%s> | Failed to find item. | item: %s", __class__.__name__, value)
-                    #     setattr(self, key, value)
+                # if (
+                #     key in ["is_specialization_required", "item_result", "item_required"] or key.startswith("item_ingredient")
+                # ) and value not in [0, -1]:
+                #     setattr(self, key, value)
+                # try:
+                #     setattr(self, key, self._moogle.get_item(item=str(value), limit_results=1))
+                # except MoogleLookupError:
+                #     LOGGER.warning("<%s> | Failed to find item. | item: %s", __class__.__name__, value)
+                #     setattr(self, key, value)
 
-                elif key == "craft_type":
+                if key == "craft_type":
                     try:
                         self.craft_type = CraftType(value=value)
                     except ValueError:
@@ -2311,7 +2650,78 @@ class Recipe(Object):
                     setattr(self, key, value)
 
             else:
+                # Some recipe's have a `-1` value set for `item_ingredient` key.
+                if value == "-1":
+                    value = 0
                 setattr(self, key, value)
+
+    async def get_crafting_cost(
+        self,
+        *,
+        results: Optional[dict[int, Crafting]] = None,
+        **kwargs: Unpack[CurMarketBoardParams],
+    ) -> Optional[dict[int, Crafting]]:
+        """Fetches purchasing information related to the Recipe and it's ingredients.
+
+        Retrieve Item, Marketboard, Vendor and Tradeshop information and returns the data in a useful structure.
+
+        Parameters
+        ----------
+        results: :class:`Optional[dict[int, CraftingCost]]`, optional
+            Any data from a previous call of the function, by default None.
+        **kwargs: :class:`Unpack[CurMarketBoardParams]`
+            Any additional params to pass to `<UniversalisAPI.get_bulk_current_data()>`.
+
+        Returns
+        -------
+        :class:`Optional[dict[int, CraftingCost]]`
+            Information about every Item needed to craft this Recipe.
+
+        """
+        # First iteration; set's the data structure up.
+        if results is None:
+            results = {}
+
+        # Getting the items Recipe, if applicable.
+        try:
+            recipe: Recipe = self._moogle._get_recipe(recipe_id=str(self.id))
+        except MoogleLookupError:
+            LOGGER.error("<%s.%s> | Failed to get Recipe data. | Recipe ID: %s", __class__.__name__, "get_crafting_cost", self.id)
+            return None
+
+        # We are getting all the items and ingredients to craft the item.
+        for idx in range(8):
+            item_id: int = getattr(recipe, f"item_ingredient{idx}", 0)
+            quantity: int = getattr(recipe, f"amount_ingredient{idx}", 0)
+            if item_id == 0:
+                continue
+
+            item: Item = self._moogle.get_item(item=str(item_id), limit_results=1)
+            # This is for the item if it has it's own recipe
+            if item.recipe is not None:
+                # If we don't have it in our results.(Prevent Recursion)
+                # We set it's Craftable to True and then call the function again.
+                if results.get(item.id, None) is None:
+                    results[item.id] = {"item": item, "count": quantity}
+                    res: dict[int, Crafting] | None = await self.get_crafting_cost(results=results, **kwargs)
+                    if res is not None:
+                        results.update(res)
+            else:
+                # Doesn't have a recipe; so set craftable to False.
+                results[item.id] = {"item": item, "count": quantity}
+
+            vendors: list[Vendor] | None = await item.get_vendors()
+            if vendors is not None:
+                results[item.id].update({"vendors": vendors})
+            tradeshops: list[Vendor] | None = await item.get_tradeshops()
+            if tradeshops is not None:
+                results[item.id].update({"tradeshops": tradeshops})
+
+            await item.get_current_marketboard(**kwargs)
+            if item.mb_current is not None:
+                results[item.id].update({"marketboard": item.mb_current})
+
+        return results
 
 
 class ItemFish(Object):
@@ -2952,7 +3362,7 @@ class PlaceName(Object):
         self.name = data.get("name", None)
 
 
-class InventoryItem(Object):
+class InventoryItem(Item):
     """Represents an item from a parsed Allagon Tools Inventory CSV file.
 
     Attributes
@@ -3001,31 +3411,32 @@ class InventoryItem(Object):
 
     __slots__ = (
         "inventory_location",
-        "name",
+        # "name",
         "source",
         "total_quantity_available",
         "type",
     )
 
-    def __init__(self, item_id: int, data: AllagonToolsInventoryCSV, **kwargs: Unpack[ObjectParams]) -> None:
+    # def __init__(self, item_id: int, data: AllagonToolsInventoryCSV, **kwargs: Unpack[ObjectParams]) -> None:
+    def __init__(self, item: Item, atools_data: AllagonToolsInventoryCSV) -> None:
         """Build your InventoryItem object.
 
         Parameters
         ----------
-        item_id: :class:`int`
-            The Final Fantasy 14 item id.
-        data: :class:`AllagonToolsInventoryCSV`
+        item: :class:`int`
+            Our Moogle's Intuition :class:`Item` object.
+        atools_data: :class:`AllagonToolsInventoryCSV`
             The JSON data.
-        **kwargs: :class:`Unpack[ObjectParams]`
-            Any additional functionality such as a :class:`Angler` object or :class:`UniversalisAPI` object.
-            - By default the :class:`Moogle` object is required for functionality sake.
 
         """
-        super().__init__(data, moogle=kwargs["moogle"])
-        self.id = item_id
+        # super().__init__(atools_data, moogle=kwargs["moogle"])
+        # self.id = item_id
+        self.item: Item = item
+        self.id = item.id
+        self.name = item.name
         self._repr_keys = ["name", "id", "quality", "quantity", "location", "source"]
         for key in self.__slots__:
-            value: Optional[int | bool | str] = data.get(key, None)
+            value: Optional[int | bool | str] = atools_data.get(key, None)
             if value is None:
                 continue
 
@@ -3044,6 +3455,18 @@ class InventoryItem(Object):
 
             else:
                 setattr(self, key, value)
+
+    def __len__(self) -> int:
+        return super().__len__()
+
+    def __eq__(self, other: object) -> bool:
+        return super().__eq__(other=other)
+
+    def __hash__(self) -> int:
+        return super().__hash__()
+
+    def __lt__(self, other: object) -> bool:
+        return super().__lt__(other=other)
 
     @staticmethod
     def _convert_inv_loc_to_enum(location: str) -> InventoryLocation:

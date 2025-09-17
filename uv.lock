@@ -103,26 +103,23 @@ wheels = [
 
 [[package]]
 name = "async-garlandtools"
-version = "0.2.0.dev0"
+version = "1.0.0.dev0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "aiohttp-client-cache" },
     { name = "aiosqlite" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/57/27/e5daf15f23728f6de442cd6a7797a6b82b66ac24e36af86734518b8911f7/async_garlandtools-0.2.0.dev0.tar.gz", hash = "sha256:894927f544d2ebc30473318c073e4756cd71eea6ac01bcbbf2c18029ee08d82f", size = 18603, upload-time = "2025-07-27T04:51:11.705Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9a/46/d4610af6b73197fae681ca5d5e670337c15e2ee49749160e4151bf00926d/async_garlandtools-0.2.0.dev0-py3-none-any.whl", hash = "sha256:9a848f2015dcac98890f9afb326606fb2d3f91c24c7257cdf728c2fc01dcabaa", size = 18694, upload-time = "2025-07-27T04:51:10.445Z" },
-]
+sdist = { url = "https://files.pythonhosted.org/packages/f3/73/3032ba47968df4e751bf659f7b7132de97661b148a0e47321131d5c9fc61/async_garlandtools-1.0.0.dev0.tar.gz", hash = "sha256:b66d159ac247582e51643ad0cf33eb82667c2109e05e9598eac31de02f75c243", size = 18521, upload-time = "2025-08-25T02:33:16.702Z" }
 
 [[package]]
 name = "async-universalis"
-version = "3.0.2.dev0"
+version = "4.0.2.dev0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f4/86/692e60a2c7fd21b54a63eec1661b40e610be305bb8118cc8f7d9c8b204b5/async_universalis-3.0.2.dev0.tar.gz", hash = "sha256:3abdfeb5df4c69a2a17c748822abbd61dc61c30075b9e80ee006e93ae68fb588", size = 1499544, upload-time = "2025-07-29T17:07:37.047Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/95/50/2758264401db92764baa6af13aedce4488706041f75cab961664667fea5c/async_universalis-4.0.2.dev0.tar.gz", hash = "sha256:95c19de65e35efc935097416387da88a90077a223ce7f32719345e51f6fad01a", size = 1500003, upload-time = "2025-09-09T20:50:28.392Z" }
 
 [[package]]
 name = "attrs"
@@ -237,7 +234,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "async-garlandtools", specifier = ">=0.1.3.dev0" },
-    { name = "async-universalis", specifier = ">=3.0.1.dev0" },
+    { name = "async-universalis" },
     { name = "beautifulsoup4", specifier = ">=4.13.4" },
     { name = "thefuzz", specifier = ">=0.22.1" },
 ]

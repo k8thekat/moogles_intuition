@@ -23,10 +23,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 if TYPE_CHECKING:
-    from async_universalis import DataCenter, ItemQuality, UniversalisAPI, World
+    # import datetime
+
+    from async_universalis import CurrentData, DataCenter, HistoryData, ItemQuality, UniversalisAPI, World
     from ff14angler import Angler
 
-    from .modules import Moogle
+    from .modules import Currency, Item, Moogle
 
 
 class CurMarketBoardParams(TypedDict):
@@ -537,16 +539,57 @@ class MakePlaceData(TypedDict):
 
 
 class FurnitureFixtures(TypedDict):
-    level: str
-    type: str
+    level: NotRequired[str]
+    type: NotRequired[str]
     name: str
     itemId: int
-    color: str
+    color: NotRequired[str]
     transform: NotRequired[Transform]
-    properties: dict[Any, Any]
+    properties: NotRequired[dict[Any, Any]]
 
 
 class Transform(TypedDict):
     location: list[float]
     rotation: list[float]
     scale: list[int]
+
+
+# class ShoppingPartial(TypedDict):
+#     """Base Shopping data structure."""
+
+#     item_name: str
+#     item_id: int
+#     quantity: int
+#     marketboard: Optional[CurrentData]
+#     recipe: Optional[JobRecipe]
+#     garlandtools: Optional[ItemResponse]
+
+
+class ShoppingCurrency(TypedDict):
+    currency: Currency
+    cost: int
+    marketboard: CurrentData | HistoryData | None
+
+
+class Crafting(TypedDict):
+    item: Item
+    count: int
+    marketboard: NotRequired[CurrentData]
+    vendors: NotRequired[list[Vendor]]
+    tradeshops: NotRequired[list[Vendor]]
+    # craftable: bool
+
+
+class Vendor(TypedDict):
+    id: str
+    name: str
+    shop_name: str
+    price: int
+    url: str
+    currency: NotRequired[Item]
+    "Any tradeable currency such as Poetics or Seals, if applicable."
+
+
+class MakePlaceShopping(TypedDict):
+    craftables: dict[int, str]
+    non_market: list[Item]

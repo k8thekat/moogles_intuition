@@ -25,7 +25,7 @@ classifiers = [
 keywords = ["moogle_intuition", "ffxiv", "datamining", "universalis", "garland tools"]
 dependencies = [
     "async-garlandtools>=0.1.3.dev0",
-    "async-universalis>=3.0.1.dev0",
+    "async-universalis",
     "beautifulsoup4>=4.13.4",
     "thefuzz>=0.22.1",
 ]
@@ -58,6 +58,8 @@ ignore = [
     "SIM105",
     "SLF001", # private function/attribute usage outside of the class it was defined.
     "TD003", # Ignore TODO's not having a link/url to an issue.
+    "T201", # Ignore print statements.
+    "TRY400", # Ingoring forced `logging.exception` statement's when using try/except.
     "UP007",
     "UP034",
     "UP038",

@@ -72,12 +72,33 @@ The current data structions/class's used to implement the *Scope*.
     Parse Allagon Tools csv file into an object.
     - *DONE* - Loading and Converting of Allagaon Tools CSV data into Item Objects.
     - Prep for Universalis interaction.
-    - Searching up a Recipe and see it's cost vs making it.
+    - TODO - Searching up a Recipe and see it's cost vs making it.
         - Sort by least missing ingredients.
         - Attach Costs to items and or cheapest to "craft".
 
 
-
+### Teamcraft Integration
+    - Take an item and generate a Teamcraft list?
 
 ### MakePlace Integration
-    ???
+    - Add support for Seeing if an item can be purchased or not.
+    - Add Color code conversion to Ingame Dye
+    - Support getting the count of "material" for crafting.
+    - {
+			"itemId": 21109,
+			"name": "Blank Hingan Partition",
+			"transform":
+			{
+				"location": [ 993.64805000000001, 617.84142999999995, -699.99979999999994 ],
+				"rotation": [ 0, -0, 0.70710673118654366, 0.70710683118654805 ],
+				"scale": [ 1, 1, 1 ]
+			},
+			"properties":
+			{
+				"material":
+				{
+					"name": "Alpine Inner Wall",
+					"itemId": 14070
+				}
+			}
+		},

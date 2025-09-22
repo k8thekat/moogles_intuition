@@ -58,22 +58,17 @@ async def local_test() -> None:
     """Co-routine to run local tests."""
     moogle: Moogle = await Moogle().build()
     stime = time()  # don't remove this line.
-    # item: Item = moogle.get_item(item="10373", limit_results=1) # Magitek Repair Mats
-    item = moogle.get_item(item="Square Maple Shield", limit_results=1)
-    print("Item Obj:\n", item)
-    print("Recipe Obj:\n", item.recipe)
-    pprint(await item.recipe.get_crafting_cost())
+    await currency(moogle)
     LOGGER.info("Completed local_test() in %s seconds...", format(time() - stime, ".3f"))
     await moogle.clean_up()
 
 
 async def currency(moogle: Moogle) -> None:
-    res: dict[int, ShoppingCurrency] | None = await moogle.currency_spender(
-        Currency.Serpent_Seal, patch=Expansion.Endwalker, world_or_dc=World.Zalera
-    )
+    currency = Currency.Bicolor_Gemstone
+    res: dict[int, ShoppingCurrency] | None = await moogle.currency_spender(currency, patch=Expansion.Endwalker, world_or_dc=World.Zalera)
     # print(res)
     if res is not None:
-        write_data_to_file(file_name="seals_crystal.txt", data=parse_shopping_data(res), path=Path().joinpath("local_data/dumps"))
+        write_data_to_file(file_name=f"{currency.name}.txt", data=parse_shopping_data(res), path=Path().joinpath("local_data/dumps"))
 
 
 def parse_shopping_data(data: dict[int, ShoppingCurrency]) -> list[str]:

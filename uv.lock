@@ -114,12 +114,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/f3/73/3032ba47968df4e75
 
 [[package]]
 name = "async-universalis"
-version = "4.0.2.dev0"
+version = "4.1.0.dev0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/95/50/2758264401db92764baa6af13aedce4488706041f75cab961664667fea5c/async_universalis-4.0.2.dev0.tar.gz", hash = "sha256:95c19de65e35efc935097416387da88a90077a223ce7f32719345e51f6fad01a", size = 1500003, upload-time = "2025-09-09T20:50:28.392Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/03/5e/38dc46307fd0392642a569d4dbb8f4f08691810b0894a747dd8301c23547/async_universalis-4.1.0.dev0.tar.gz", hash = "sha256:1d0b173628f06762c91ae1bc59ce3697447ca249d64aa4d62e973043e5356b01", size = 1500067, upload-time = "2025-09-17T19:36:51.309Z" }
 
 [[package]]
 name = "attrs"

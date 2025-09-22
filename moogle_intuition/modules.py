@@ -301,8 +301,9 @@ class Generic:
 
     # Item Handling.
     _items: dict[str, DataTypeAliases]
-    _items_ref: dict[str | int, str | int]
-    "Quick Ref for Name lookups.  `item_name[str]` : `item_id[int]`"
+    # _items_ref: dict[str | int, str | int]
+    # "Quick Ref for Name lookups.  `item_name[str]` : `item_id[int]`"
+
     # Recipe Handling.
     # I am storing "Recipe ID" : "Item Result ID"
     # recipe_dict: dict[str, int]  # ? Unsure why this was commented out, need to validate usage.
@@ -944,6 +945,9 @@ class Moogle(Generic):
     _garlandtools: GarlandToolsAsync
 
     _items_cache: dict[str, Item]
+    "Local cache to our Moogle object for faster data lookup."
+    _items_ref: dict[str | int, str | int]
+    "Quick Ref for Name lookups.  `item_name[str]` : `item_id[int]`"
 
     @property
     def garlandtools(self) -> GarlandToolsAsync:
@@ -1041,7 +1045,7 @@ class Moogle(Generic):
 
         # Item related dict/JSON
         self._items: dict[str, DataTypeAliases] = self._load_json(path=DATA_PATH.joinpath("item.json"))
-        self._items_ref: dict[str | int, str | int] = self._reference_dict(data=self._items, value_get="name", flip_key_value=True)
+        self._items_ref = self._reference_dict(data=self._items, value_get="name", flip_key_value=True)
 
         # Recipe related dict/JSON
         self._recipes = self._load_json(path=DATA_PATH.joinpath("recipe.json"))
@@ -1100,6 +1104,7 @@ class Moogle(Generic):
         data: dict[str, DataTypeAliases] = json.loads(path.read_bytes(), **json_args)
         return data
 
+    # TODO(@k8thekat): Look into better return type definition to handle attribute definition for attributes such as `_items_ref`.
     def _reference_dict(
         self,
         data: dict[str, DataTypeAliases],
@@ -1137,10 +1142,10 @@ class Moogle(Generic):
         self._items_cache.update({str(item.id): item})
 
     @overload
-    def get_item(self, *, item: str, limit_results: Literal[1], match: int = ...) -> Item: ...
+    def get_item(self, item: str, *, limit_results: Literal[1], match: int = ...) -> Item: ...
 
     @overload
-    def get_item(self, *, item: str, limit_results: int = ...) -> list[Item]: ...
+    def get_item(self, item: str, *, limit_results: int = ...) -> list[Item]: ...
 
     def get_item(self, item: str, *, limit_results: int = 10, match: int = 80) -> Item | list[Item]:
         """Retrieves a possible match to the `item_name` or `item_id` parameter as an FFXIV Item.
@@ -1873,7 +1878,8 @@ class Moogle(Generic):
 
         # Filtering of the Items by Patch.
         # market_ids: list[int] = []
-        for item in results:
+        temp: dict[int, ShoppingCurrency] = results.copy()
+        for item in temp:
             itemres: ItemResponse = await self._garlandtools.item(item_id=item)
             LOGGER.debug(
                 "Item: %s[%s] | Item Patch: %s | Patch: %s[%s](+1 offset) | Item Patch < Patch %s > %s",
@@ -2237,7 +2243,10 @@ class Item(Object):
         return self._garlandtools_data
 
     async def get_icon(self) -> Optional[GTObject]:
-        """Retrieves the GarlandTools API data for this items FFXIV Icon.
+        """Fetches GarlandTools Icon data, if applicable.
+
+        .. note::
+            If :class:`Item.garlandtools_data` is `None`, the data will be fetched via :class:`Item.get_garlandtools_data()` and parsed.
 
         Returns
         -------
@@ -2245,23 +2254,32 @@ class Item(Object):
             A GarlandTools API Object.
 
         """
-        await self.get_garlandtools_data()
+        data = None
         if self.garlandtools_data is None:
+            data: ItemResponse | None = await self.get_garlandtools_data()
+
+        if data is None:
+            LOGGER.warning("<%s.%s> | Failed to get GarlandTools Data. | Item: %s", __class__.__name__, "get_icon", self.id)
             return None
-        icon_id: int = self.garlandtools_data["item"]["icon"]
+
+        icon_id: int = data["item"]["icon"]
         res: GTObject = await self._moogle._garlandtools.icon(icon_id=icon_id, icon_type=IconType.item)
         return res
 
-    async def get_vendors(self) -> list[Vendor] | None:
-        """Get GarlandTools Vendor information, if applicable.
+    def get_vendors(self) -> list[Vendor] | None:
+        """Parse GarlandTools Data and retrieve Vendor information, if applicable.
+
+        .. warning::
+            The Garlandtools data must first be fetched/cached via :class:`Item.get_garlandtools_data()`.
+
 
         Returns
         -------
         :class:`list[Vendor] | None`
-            A list of :class:`Vendor` to access information related to the vendor.
+            A list of :class:`Vendor` to access information related to the vendor,
+            otherwise will return `None` if :class:`Item.garlandtools_data` is `None`.
 
         """
-        await self.get_garlandtools_data()
         if self.garlandtools_data is None:
             return None
 
@@ -2286,16 +2304,20 @@ class Item(Object):
                 })
         return result
 
-    async def get_tradeshops(self) -> list[Vendor] | None:
-        """Get GarlandTools Trade shop information, if applicable.
+    def get_tradeshops(self) -> list[Vendor] | None:
+        """Parse GarlandTools data and retrieve Trade shop information, if applicable.
+
+        .. warning::
+            The Garlandtools data must first be fetched/cached via :class:`Item.get_garlandtools_data()`.
+
 
         Returns
         -------
         :class:`list[Vendor] | None`
-            A list of :class:`Vendor` to access information related to the vendor.
+             A list of :class:`Vendor` to access information related to the vendor,
+            otherwise will return `None` if :class:`Item.garlandtools_data` is `None`.
 
         """
-        await self.get_garlandtools_data()
         if self.garlandtools_data is None:
             return None
 
@@ -2460,10 +2482,10 @@ class JobRecipe(Object):
                 # Doesn't have a recipe; so set craftable to False.
                 results[item.id] = {"item": item, "count": quantity}
 
-            vendors: list[Vendor] | None = await item.get_vendors()
+            vendors: list[Vendor] | None = item.get_vendors()
             if vendors is not None:
                 results[item.id].update({"vendors": vendors})
-            tradeshops: list[Vendor] | None = await item.get_tradeshops()
+            tradeshops: list[Vendor] | None = item.get_tradeshops()
             if tradeshops is not None:
                 results[item.id].update({"tradeshops": tradeshops})
 
@@ -2710,10 +2732,10 @@ class Recipe(Object):
                 # Doesn't have a recipe; so set craftable to False.
                 results[item.id] = {"item": item, "count": quantity}
 
-            vendors: list[Vendor] | None = await item.get_vendors()
+            vendors: list[Vendor] | None = item.get_vendors()
             if vendors is not None:
                 results[item.id].update({"vendors": vendors})
-            tradeshops: list[Vendor] | None = await item.get_tradeshops()
+            tradeshops: list[Vendor] | None = item.get_tradeshops()
             if tradeshops is not None:
                 results[item.id].update({"tradeshops": tradeshops})
 

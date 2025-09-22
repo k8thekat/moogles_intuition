@@ -9,6 +9,7 @@
 - [Credits](#credits)
 - [Issues]
 - [Changelog]
+- [Contributing](./CONTRIBUTING.md)
 
 
 # Installation
@@ -27,6 +28,6 @@ How to use...
 ...
 
 
-[Repo]: https://github.com/k8thekat/{moogles_intiution}issues?q=is%3Aissue+is%3Aclosed
-[Issues]: https://github.com/k8thekat/{moogles_intiution}/issues?q=is%3Aissue+is%3Aclosed
-[Changelog]: https://github.com/k8thekat/{moogles_intiution}/blob/{development}/CHANGELOG.md
+[Repo]: https://github.com/k8thekat/moogles_intiution/issues?q=is%3Aissue+is%3Aclosed
+[Issues]: https://github.com/k8thekat/moogles_intiution/issues?q=is%3Aissue+is%3Aclosed
+[Changelog]: ./CHANGELOG.md

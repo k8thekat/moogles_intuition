@@ -2001,6 +2001,8 @@ class Item(Object):
     _mb_history: Optional[HistoryData]
 
     id: int
+    icon: int
+    "Icon ID, can be used in place for `AsyncGarlandTools.icon()`"
     description: Optional[str]
     name: str
     level_item: ItemLevelData
@@ -2023,6 +2025,7 @@ class Item(Object):
         "description",
         "dye_count",
         "equip_slot_category",
+        "icon",
         "id",
         "is_advanced_melding_permitted",
         "is_collectable",
@@ -2254,16 +2257,7 @@ class Item(Object):
             A GarlandTools API Object.
 
         """
-        data = None
-        if self.garlandtools_data is None:
-            data: ItemResponse | None = await self.get_garlandtools_data()
-
-        if data is None:
-            LOGGER.warning("<%s.%s> | Failed to get GarlandTools Data. | Item: %s", __class__.__name__, "get_icon", self.id)
-            return None
-
-        icon_id: int = data["item"]["icon"]
-        res: GTObject = await self._moogle._garlandtools.icon(icon_id=icon_id, icon_type=IconType.item)
+        res: GTObject = await self._moogle._garlandtools.icon(icon_id=self.icon, icon_type=IconType.item)
         return res
 
     def get_vendors(self) -> list[Vendor] | None:

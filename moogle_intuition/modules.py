@@ -2054,6 +2054,7 @@ class Item(Object):
         super().__init__(data=data, moogle=kwargs["moogle"])
         # This list to control the amount of information we return via `__str__()` and `__repr__()` dunder methods.
         self._repr_keys = ["id", "name"]
+        self.description = None
         for key in self.__slots__:
             value: Optional[int | bool | str] = data.get(key, None)
             if value is None:

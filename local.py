@@ -19,7 +19,7 @@ from time import time
 from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypedDict, Unpack
 
 import aiohttp
-from async_garlandtools import GarlandToolsAsync as GarlandTools
+from async_garlandtools import GarlandToolsAsync as GarlandTools, IconType
 from async_garlandtools._types import ItemResponse, TradeShops
 from async_universalis import CurrentData, CurrentDataEntries, DataCenter, HistoryData, MultiPart, UniversalisAPI, World
 
@@ -58,7 +58,9 @@ async def local_test() -> None:
     """Co-routine to run local tests."""
     moogle: Moogle = await Moogle().build()
     stime = time()  # don't remove this line.
-    await currency(moogle)
+    item = moogle.get_item("9", limit_results=1)
+    await item.get_garlandtools_data()
+    print(item.garlandtools_data.get("item").get("patch"))
     LOGGER.info("Completed local_test() in %s seconds...", format(time() - stime, ".3f"))
     await moogle.clean_up()
 
@@ -196,7 +198,7 @@ async def makeplace_housing(moogle: Moogle) -> None:
                     shop_cur_flag = True
                     for cur_shop in tradeshops:
                         output.append(
-                            f"#### **TradeShop**: [{cur_vendor.get('name')} | {cur_vendor.get('shop_name')}]({cur_vendor.get('url', 'N/A')})"
+                            f"#### **TradeShop**: [{cur_shop.get('name')} | {cur_shop.get('shop_name')}]({cur_shop.get('url', 'N/A')})"
                         )
                         currency: Item | None = cur_shop.get("currency")
                         price = cur_shop.get("price", 0)

@@ -35,8 +35,6 @@ GitHub = "https://github.com/k8thekat/moogles_intuition"
 [tool.ruff]
 target-version = "py312"
 line-length = 140
-
-[tool.ruff.lint]
 select = ["ALL"]
 ignore = [
     "ANN401",
@@ -62,7 +60,6 @@ ignore = [
     "TRY400", # Ingoring forced `logging.exception` statement's when using try/except.
     "UP007",
     "UP034",
-    "UP038",
     "UP045", # Type var `Optional[X]` vs `X | None`
 ]
 

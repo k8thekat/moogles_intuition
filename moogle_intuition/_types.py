@@ -20,7 +20,7 @@ Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Any, NotRequired, Optional, TypedDict
 
 if TYPE_CHECKING:
     # import datetime
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 
 class CurMarketBoardParams(TypedDict):
-    world_or_dc: NotRequired[DataCenter | World]
+    world_or_dc: NotRequired[Optional[DataCenter | World]]
     num_listings: NotRequired[int]
     num_history_entries: NotRequired[int]
     item_quality: NotRequired[ItemQuality]
@@ -40,7 +40,7 @@ class CurMarketBoardParams(TypedDict):
 
 
 class HistMarketBoardParams(TypedDict):
-    world_or_dc: NotRequired[DataCenter | World]
+    world_or_dc: NotRequired[Optional[DataCenter | World]]
     num_listings: NotRequired[int]
     min_price: NotRequired[int]
     max_price: NotRequired[int]
@@ -593,3 +593,19 @@ class Vendor(TypedDict):
 class MakePlaceShopping(TypedDict):
     craftables: dict[int, str]
     non_market: list[Item]
+
+
+class HTMLKeys(TypedDict):
+    replace: str
+
+
+class GatheringNode(TypedDict):
+    """Gathering location information related to an :class:`Item`."""
+
+    area_name: str  # aka Node["name"]
+    # zoneid: int
+    coords: list[float]
+    # node_id: int
+    zone_name: str
+    gt_url: str
+    lvl: int

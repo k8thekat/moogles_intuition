@@ -50,7 +50,7 @@ if TYPE_CHECKING:
 
     from aiohttp import ClientResponse
     from aiohttp.client import _RequestOptions as AiohttpRequestOptions  # pyright: ignore[reportPrivateUsage]
-    from async_garlandtools._types import Item as GTItem, ItemResponse, PartialTypeIDObj, TradeShops
+    from async_garlandtools._types import Item as GTItem, ItemResponse, NodeResponse, PartialTypeIDObj, TradeShops
     from async_universalis import CurrentDataEntries, HistoryData, HistoryDataEntries, World
 
     from moogle_intuition.ff14angler._types import FishingData
@@ -65,7 +65,9 @@ if TYPE_CHECKING:
         FurnitureFixtures,
         GatheringItemData,
         GatheringItemLevelData,
+        GatheringNode,
         HistMarketBoardParams,
+        HTMLKeys,
         ItemData,
         ItemLevelData,
         MakePlaceData,
@@ -162,6 +164,13 @@ IGNORED_KEYS: list[str] = [
 ]
 
 SANITIZED_VALUES: list[str] = ["<Emphasis>", "</Emphasis>"]
+
+
+SANITIZED_HTML: dict[str, HTMLKeys] = {
+    "uiforeground": {"replace": ""},
+    "uiglow": {"replace": ""},
+}
+
 
 # The order of these keys matter as the occurence of the data in the arrays can vary.
 SANITIZED_KEYS: dict[str, str] = {
@@ -301,14 +310,14 @@ class Generic:
 
     # Item Handling.
     _items: dict[str, DataTypeAliases]
-    # _items_ref: dict[str | int, str | int]
-    # "Quick Ref for Name lookups.  `item_name[str]` : `item_id[int]`"
+    "Structure -> `item_id[int]` : `item_data`"
+    _items_ref: dict[str | int, str | int]
+    "Useful for Item Name -> Item ID lookups.  `item_name[str]` : `item_id[int]`"
 
     # Recipe Handling.
-    # I am storing "Recipe ID" : "Item Result ID"
-    # recipe_dict: dict[str, int]  # ? Unsure why this was commented out, need to validate usage.
     _recipes: dict[str, DataTypeAliases]
     _recipes_ref: dict[str | int, str | int]
+    "Useful for Recipe ID -> Item Result lookups. `recipe_id[str]` : `item_result[int]`"
 
     # Job Recipe Table
     _recipe_lookups: dict[str, DataTypeAliases]
@@ -317,21 +326,24 @@ class Generic:
     _recipe_levels: dict[str, DataTypeAliases]
 
     # Gatherable Items Handling.
-    # Using flipped keys in the item_dict for faster lookup of an item.
     _gathering_items: dict[str, DataTypeAliases]
+    # Using flipped keys in the item_dict for faster lookup of an item.
     _gathering_items_ref: dict[str | int, str | int]
+    "Useful for Gathering ID -> Item ID lookups. `gathering_id[str]` : `item_id[int]`"
     _gathering_item_levels: dict[str, DataTypeAliases]
 
     # Fishing Related
     _fish_params: dict[str, DataTypeAliases]
     # This is stored with FLIPPED key to values ("Item ID" : "Dict Index")
     _fish_params_ref: dict[str | int, str | int]
+    "Useful for Item ID -> Fishing Info ID. `item_id[int]` : `fish_parameter_id[str]`"
     _fishing_spot: dict[str, DataTypeAliases]
 
     # Spearfishing Related
     _spearfishing_items: dict[str, DataTypeAliases]
     # This is stored with FLIPPED key to values ("item id" : "Dict Index")
     _spearfishing_items_ref: dict[str | int, str | int]
+    "Useful for Item ID -> SpearFishing Info ID. `item_id[int]` : `spearfishing_item_id[str]`"
     _spearfishing_notebook: dict[str, DataTypeAliases]
 
     # Location Information
@@ -359,165 +371,36 @@ class Builder(Generic):
         if self._session is not None:
             await self._session.close()
 
-    async def file_validation(self) -> None:
-        """Validate's the required files for Moogle to operate.
-
-        - Files are located in `xiv_datamining`.
-        """
-        LOGGER.info("<%s.%s> | Validating json files... | Path: %s", __class__.__name__, "file_validation", DATA_PATH)
-        for key, data in URLS.items():
-            # lets check for the json file, which is all we care about to build our data structures.
-            f_path: Path = Path(DATA_PATH).joinpath(key + ".json")
-            LOGGER.debug(
-                "<%s.%s> | Validating file... %s. | Exists: %s | Path: %s",
-                __class__.__name__,
-                "file_validation",
-                key,
-                f_path.exists(),
-                f_path,
-            )
-            if f_path.exists() is False:
-                if DATA_PATH.exists() is False:
-                    DATA_PATH.mkdir()
-                file_name = key + ".csv"
-
-                res: bytes = await self._request(url=data[1])
-                self.write_data_to_file(path=DATA_PATH, file_name=file_name, data=res)
-                await self.csv_to_json(csv_name=file_name, convert_pound=data[0], format_keys=True)
-                LOGGER.debug(
-                    "<%s.%s> | Finished retrieving and building data for file.| File: %s",
-                    __class__.__name__,
-                    "file_validation",
-                    key,
-                )
-
-    async def csv_to_json(
-        self,
-        csv_name: str,
-        *,
-        typed_dict: bool = False,
-        typed_file_name: Optional[str] = None,
-        **csv_args: Unpack[CSVParseParams],
-    ) -> None:
-        """Parses a local `xiv_datamining` csv file into a JSON file.
-
-        .. note::
-            - If the `.csv` files are no longer present, it will get the csv file, save it and parse that.
-            - This assumes the csv file is located in `DATA_PATH`.
-
+    @staticmethod
+    def convert_values(value: str) -> int | bool | str | list[int] | None:
+        """Converts CSV values from strings into something Python can understand.
 
         Parameters
         ----------
-        csv_name: :class:`str`
-            The name of the csv file to parse located in `DATA_PATH`.
-        typed_dict: :class:`bool`, optional
-            If we want to generate a Typed Dict and write the data out to a file, by default False.
-            - File location will be `DATA_PATH`.
-        typed_file_name: :class:`Optional[str]`, optional
-            The file name to write out the Typed Dict data to, by default None.
-                - If `None`, Defaults to `csv_name_typed.py`.
-        **csv_args: :class:`Unpack[CSVParseParams]`
-            Any additional args to supply to `<Builder.csv_parse()>`.
+        value: :class:`str`
+            The string value to be converted.
+
+        Returns
+        -------
+        :class:`int | bool | str | list[int] | None`
+            The converted value.
 
         """
-        f_name = "convert_csv_to_json"
+        if len(value) == 0:
+            return None
 
-        json_name: str = csv_name.split(".", maxsplit=1)[0] + ".json"
-        if typed_file_name is None:
-            typed_file_name = csv_name.split(".", maxsplit=1)[0] + "_typed.py"
-        typed_class_name = "XIV" + typed_file_name[:-3]
+        if value.isdigit():
+            return int(value)
 
-        if DATA_PATH.joinpath(csv_name).exists():
-            LOGGER.debug("<%s.%s> | Found the local CSV file. | Name: %s", __class__.__name__, f_name, csv_name)
-            res, keys, types = self.csv_parse(path=DATA_PATH.joinpath(csv_name), **csv_args)
+        if value.lower() in ["false", "true"]:
+            return value.lower() == "true"
 
-            # ? Suggestion
-            # This will make the JSON file regardless if it exists or not.
-            # Could possible have a flag to prevent overwrite.. unsure.
-            self.write_data_to_file(path=DATA_PATH, file_name=json_name, data=res)
-
-            if typed_dict:
-                res = self.to_typed_dict(class_name=typed_class_name, keys=keys, key_types=types)
-                self.write_data_to_file(path=DATA_PATH, file_name=typed_file_name, data=res)
-
-        else:
-            # In case we cannot find the local file we can use our pre-built URLS dict to
-            # get the CSV file from the `xivapi` Github repo else prompt for a url.
-            url_key = csv_name.split(".", maxsplit=1)[0]
-            key_data: tuple[bool, str] | None = URLS.get(url_key)
-            if key_data is None:
-                url: str = input(f"Please provide a url for {csv_name}")
-            else:
-                url = key_data[1]
-
-            data: bytes = await self._request(url=url)
-            self.write_data_to_file(path=DATA_PATH, file_name=csv_name, data=data)
-            await self.csv_to_json(csv_name=csv_name, typed_dict=typed_dict, **csv_args)
-
-        # Remove the CSV files since we don't need them after they have been converted.
-        LOGGER.debug("<%s.%s> | Removing CSV file. | Name: %s", __class__.__name__, f_name, csv_name)
-        DATA_PATH.joinpath(csv_name).unlink()
-
-    async def _request(self, url: str, **request_options: Unpack[AiohttpRequestOptions]) -> bytes:
-        if self.session is None:
-            if self._session is None:
-                session: aiohttp.ClientSession = aiohttp.ClientSession()
-                self._session = session
-                LOGGER.debug("<%s._request> | Creating local `aiohttp.ClientSession()` | session: %s", __class__.__name__, session)
-            else:
-                session = self._session
-        else:
-            session = self.session
-
-        res: ClientResponse = await session.get(url=url, **request_options)
-        if res.status != 200:
-            msg = "Unable to access the URL provided: %s"
-            raise ConnectionError(msg, url)
-
-        if res.content_type == "application/json":
-            return await res.json()
-        return await res.content.read()
-
-    def write_data_to_file(
-        self,
-        file_name: str,
-        data: bytes | dict[Any, Any] | str,
-        path: Path = Path(__file__).parent,
-        *,
-        mode: str = "w+",
-        **kwargs: Any,
-    ) -> None:
-        """Basic file dump with json handling. If the data parameter is of type `dict`, `json.dumps()` will be used with an indent of 4.
-
-        Parameters
-        ----------
-        path: :class:`Path`, optional
-            The Path to write the data, default's to `Path(__file__).parent`.
-        file_name: :class:`str`
-            The name of the file, include the file extension.
-        data: :class:`bytes | dict | str`
-            The data to write out to the path and file_name provided.
-        mode: :class:`str`, optional
-            The mode to open the provided file path with using `<Path.open()>`.
-        **kwargs: :class:`Any`
-            Any additional kwargs to be supplied to `<json.dumps()>`, if applicable.
-
-        """
-        file_name = file_name.lower()
-        with path.joinpath(file_name).open(mode=mode) as file:
-            LOGGER.debug("<%s.%s> | Wrote data to file %s located at: %s", __class__.__name__, "write_data_to_file", path, file_name)
-            if isinstance(data, bytes):
-                file.write(data.decode(encoding="utf-8"))
-            elif isinstance(data, dict):
-                file.write(json.dumps(data, indent=4, **kwargs))
-            else:
-                file.write(data)
-        LOGGER.info(
-            "<%s.%s> | File write successful to path: %s ",
-            __class__.__name__,
-            "write_data_to_file",
-            path.joinpath(file_name).as_posix(),
-        )
+        if value.find(",") != -1:
+            test: str = value.replace(",", "")
+            if test.isdigit():
+                return [int(entry) for entry in value.split(",")]
+            return value
+        return value
 
     def csv_parse(
         self,
@@ -602,67 +485,104 @@ class Builder(Generic):
                 [self.sanitize_type_name(type_name=i) for i in types],
             )
 
-    @staticmethod
-    def sanitize_values(value: str, _sanitize_values: Optional[list[str]] = None) -> str:
-        """Using `.find()` to locate the entry from `_sanitize_values` will use `.replace()` of an empty str `""`.
-
-        Parameters
-        ----------
-        value: :class:`str`
-            The value to sanitize.
-        _sanitize_values: :class:`list[str]`, optional
-            The list of strings to search for and replace with `""`, by default ["<Emphasis>", "</Emphasis>"].
-
-        Returns
-        -------
-        :class:`str`
-            The sanitized string.
-
-        """
-        sanitize = SANITIZED_VALUES if _sanitize_values is None else _sanitize_values
-        for entry in sanitize:
-            if value.find(entry):
-                value = value.replace(entry, "")
-        return value
-
-    @staticmethod
-    def sanitize_key_name(key_name: str, keys: dict[str, str] = SANITIZED_KEYS) -> str:
-        """Uses `.replace()` to remove unwanted characters based upon a supplied array.
+    async def csv_to_json(
+        self,
+        csv_name: str,
+        *,
+        typed_dict: bool = False,
+        typed_file_name: Optional[str] = None,
+        **csv_args: Unpack[CSVParseParams],
+    ) -> None:
+        """Parses a local `xiv_datamining` csv file into a JSON file.
 
         .. note::
-            The order of the dict array `keys` matters as it is an iterator `keys.items()`.
+            - If the `.csv` files are no longer present, it will get the csv file, save it and parse that.
+            - This assumes the csv file is located in `DATA_PATH`.
 
 
         Parameters
         ----------
-        key_name: :class:`str`
-            The Key name to sanitize.
-        keys: :class:`dict[str, str]`, optional
-            The `key: value` dict to replace characters with.
-            - Uses the global `SANITIZED_KEYS`, otherwise supply your own `key : value` combo.
-            - `key_name.replace(key, value)`
-
-        Returns
-        -------
-        :class:`str`
-            The sanizted key_name value.
+        csv_name: :class:`str`
+            The name of the csv file to parse located in `DATA_PATH`.
+        typed_dict: :class:`bool`, optional
+            If we want to generate a Typed Dict and write the data out to a file, by default False.
+            - File location will be `DATA_PATH`.
+        typed_file_name: :class:`Optional[str]`, optional
+            The file name to write out the Typed Dict data to, by default None.
+                - If `None`, Defaults to `csv_name_typed.py`.
+        **csv_args: :class:`Unpack[CSVParseParams]`
+            Any additional args to supply to `<Builder.csv_parse()>`.
 
         """
-        # some fields have {} and other symbols that must be sanitized
-        if len(key_name) > 1 and key_name[0].isnumeric():
-            key_name = key_name.replace("1", "one").replace("2", "two")
-        for key, value in keys.items():
-            key_name = key_name.replace(key, value)
-        # key_name = key_name.replace(":", "")
-        # key_name = key_name.replace("(", "").replace(")", "")
-        # key_name = key_name.replace("{", "").replace("}", "")
-        # key_name = key_name.replace("][", "_")  # do this first for [0][1] as an example
-        # key_name = key_name.replace("[", "").replace("]", "")
-        # key_name = key_name.replace("<ms>", "").replace("<s>", "")
-        # key_name = key_name.replace("<%>", "_percent")
-        # key_name = key_name.replace("%", "_percent")
-        # key_name = key_name.replace("'", "").replace(" ", "_").replace("-", "_").replace("–", "_")
-        return key_name
+        f_name = "convert_csv_to_json"
+
+        json_name: str = csv_name.split(".", maxsplit=1)[0] + ".json"
+        if typed_file_name is None:
+            typed_file_name = csv_name.split(".", maxsplit=1)[0] + "_typed.py"
+        typed_class_name = "XIV" + typed_file_name[:-3]
+
+        if DATA_PATH.joinpath(csv_name).exists():
+            LOGGER.debug("<%s.%s> | Found the local CSV file. | Name: %s", __class__.__name__, f_name, csv_name)
+            res, keys, types = self.csv_parse(path=DATA_PATH.joinpath(csv_name), **csv_args)
+
+            # ? Suggestion
+            # This will make the JSON file regardless if it exists or not.
+            # Could possible have a flag to prevent overwrite.. unsure.
+            self.write_data_to_file(path=DATA_PATH, file_name=json_name, data=res)
+
+            if typed_dict:
+                res = self.to_typed_dict(class_name=typed_class_name, keys=keys, key_types=types)
+                self.write_data_to_file(path=DATA_PATH, file_name=typed_file_name, data=res)
+
+        else:
+            # In case we cannot find the local file we can use our pre-built URLS dict to
+            # get the CSV file from the `xivapi` Github repo else prompt for a url.
+            url_key = csv_name.split(".", maxsplit=1)[0]
+            key_data: tuple[bool, str] | None = URLS.get(url_key)
+            if key_data is None:
+                url: str = input(f"Please provide a url for {csv_name}")
+            else:
+                url = key_data[1]
+
+            data: bytes = await self._request(url=url)
+            self.write_data_to_file(path=DATA_PATH, file_name=csv_name, data=data)
+            await self.csv_to_json(csv_name=csv_name, typed_dict=typed_dict, **csv_args)
+
+        # Remove the CSV files since we don't need them after they have been converted.
+        LOGGER.debug("<%s.%s> | Removing CSV file. | Name: %s", __class__.__name__, f_name, csv_name)
+        DATA_PATH.joinpath(csv_name).unlink()
+
+    async def file_validation(self) -> None:
+        """Validate's the required files for Moogle to operate.
+
+        - Files are located in `xiv_datamining`.
+        """
+        LOGGER.info("<%s.%s> | Validating json files... | Path: %s", __class__.__name__, "file_validation", DATA_PATH)
+        for key, data in URLS.items():
+            # lets check for the json file, which is all we care about to build our data structures.
+            f_path: Path = Path(DATA_PATH).joinpath(key + ".json")
+            LOGGER.debug(
+                "<%s.%s> | Validating file... %s. | Exists: %s | Path: %s",
+                __class__.__name__,
+                "file_validation",
+                key,
+                f_path.exists(),
+                f_path,
+            )
+            if f_path.exists() is False:
+                if DATA_PATH.exists() is False:
+                    DATA_PATH.mkdir()
+                file_name = key + ".csv"
+
+                res: bytes = await self._request(url=data[1])
+                self.write_data_to_file(path=DATA_PATH, file_name=file_name, data=res)
+                await self.csv_to_json(csv_name=file_name, convert_pound=data[0], format_keys=True)
+                LOGGER.debug(
+                    "<%s.%s> | Finished retrieving and building data for file.| File: %s",
+                    __class__.__name__,
+                    "file_validation",
+                    key,
+                )
 
     @staticmethod
     def from_camel_case(
@@ -722,6 +642,195 @@ class Builder(Generic):
         LOGGER.debug("<%s.from_camel_case> | key_name: %s | Converted: %s", __class__.__name__, key_name, temp)
         return temp
 
+    def generate_enum(self, class_name: str, keys: list[int], values: list[str] | list[int]) -> str:
+        """Takes in keys and values to generate an basic Enum.
+
+        - Structing the Enum in the way of `values = keys` (my_attribute = 0)
+
+        Parameters
+        ----------
+        class_name: :class:`str`
+            The name of the Enum placed into `{class_name}(Enum):`.
+        keys: :class:`list[int]`
+            The int value for the Enum values to equal `(values = keys)`.
+        values: :class:`list[str | int]`
+            The attributes to be used for the Enum.
+
+        Returns
+        -------
+        :class:`str`
+            A :class:`Enum` as a string.
+
+        """
+        temp: list[str] = []
+        temp.append(f"class {class_name}(Enum):")
+        for key, key_value in zip(keys, values, strict=False):
+            temp.append(f"    {key_value} = {key}")
+        return "\n".join(temp)
+
+    def _rebuild_files(self) -> Optional[Literal[True]]:
+        """Currently used for relocating all local JSON files inside `xiv_dataminig`.
+
+        No file validation in terms of size, keys, etc. Moves the existing library files to `xiv_datamining_old` directory.
+
+        .. note::
+            Typical usage would be for new content being added to XIV.
+
+
+        """
+        if DATA_PATH.exists() is False:
+            msg = "<%s.%s> | Failed to find existing JSON directory. | Path: %s"
+            raise FileNotFoundError(msg, __class__.__name__, "_rebuild_files", DATA_PATH)
+
+        old_cache: Path = Path(__file__).parent.joinpath("xiv_datamining_old")
+        if old_cache.exists() is False:
+            old_cache.mkdir()
+
+        DATA_PATH.rename(old_cache)
+        LOGGER.info("<%s.%s> | Moved JSON files to backup directory. | Path: %s", __class__.__name__, "_rebuild_files", old_cache)
+        return True
+
+    async def _request(self, url: str, **request_options: Unpack[AiohttpRequestOptions]) -> bytes:
+        if self.session is None:
+            if self._session is None:
+                session: aiohttp.ClientSession = aiohttp.ClientSession()
+                self._session = session
+                LOGGER.debug("<%s._request> | Creating local `aiohttp.ClientSession()` | session: %s", __class__.__name__, session)
+            else:
+                session = self._session
+        else:
+            session = self.session
+
+        res: ClientResponse = await session.get(url=url, **request_options)
+        if res.status != 200:
+            msg = "Unable to access the URL provided: %s"
+            raise ConnectionError(msg, url)
+
+        if res.content_type == "application/json":
+            return await res.json()
+        return await res.content.read()
+
+    @classmethod
+    def sanitize_html(
+        cls,
+        data: str,
+        *,
+        keys: dict[str, HTMLKeys] = SANITIZED_HTML,
+        keep_tag_contents: bool = False,
+        count: int = -1,
+    ) -> str:
+        """Removes HTML tags with the option to keep tag contents or not.
+
+        If you wanted to target the starting tag `<UIForeground>` and the closing tag `</UIForeground>` see the below data struct.
+        - The tags are not case sensitive as we are calling `str.lower()`
+        on the entire data struct for parsing purposes the returned data will be unaffected.
+
+        ```
+        SANITIZED_HTML = {"uiforeground": {"replace": "..."},
+                            "uiglow": {"replace": ""}}
+        ```
+
+        .. note::
+            Will recursively parse the data until the start tag and end tag are no longer found.
+
+
+        Parameters
+        ----------
+        data: :class:`str`
+            The data to remove HTML tags.
+        keys: :class:`dict[str, HTMLKeys]`, optional
+            The HTML tags to be replaced with their replacement value, by default SANITIZED_HTML.
+        count: :class:`int`, optional
+            The count parameter for :class:`str`.replace(), by default -1.
+        keep_tag_contents: :class:`bool`, optional
+            If you want to keep the content between HTML tags.
+
+        Returns
+        -------
+        :class:`str`
+            The parsed data set.
+
+        """
+        for key, value in keys.items():
+            start_key: str = f"<{key}>"
+            start_idx: int = data.lower().find(start_key)
+            end_key: str = f"</{key}>"
+            end_idx: int = data.lower().find(end_key)
+            if start_idx == -1 and end_idx == -1:
+                LOGGER.debug(
+                    "<%s.%s> | No Keys found in dataset. | Start Index: %s | End Index: %s",
+                    __class__.__name__,
+                    "sanitize_html",
+                    start_idx,
+                    end_idx,
+                )
+                return data
+
+            if start_idx != -1 and end_idx != -1:
+                LOGGER.debug(
+                    "<%s.%s> | Found keys with proper index. | Start Index: %s | End Index: %s | Offset: %s",
+                    __class__.__name__,
+                    "sanitize_html",
+                    start_idx,
+                    end_idx,
+                    len(end_key),
+                )
+                end_idx += len(end_key)
+                LOGGER.debug(
+                    "<%s.%s> | Replacing sectioned data. | Data: %s | Replacement: %s",
+                    __class__.__name__,
+                    "sanitize_html",
+                    data[start_idx:end_idx],
+                    value["replace"],
+                )
+                if keep_tag_contents is True:
+                    data = data.replace(start_key, value["replace"], count)
+                    data = data.replace(end_key, value["replace"], count)
+                else:
+                    data = data.replace(data[start_idx:end_idx], value["replace"], count)
+
+                data = cls.sanitize_html(data=data)
+        return data
+
+    @staticmethod
+    def sanitize_key_name(key_name: str, keys: dict[str, str] = SANITIZED_KEYS) -> str:
+        """Uses `.replace()` to remove unwanted characters based upon a supplied array.
+
+        .. note::
+            The order of the dict array `keys` matters as it is an iterator `keys.items()`.
+
+
+        Parameters
+        ----------
+        key_name: :class:`str`
+            The Key name to sanitize.
+        keys: :class:`dict[str, str]`, optional
+            The `key: value` dict to replace characters with.
+            - Uses the global `SANITIZED_KEYS`, otherwise supply your own `key : value` combo.
+            - `key_name.replace(key, value)`
+
+        Returns
+        -------
+        :class:`str`
+            The sanizted key_name value.
+
+        """
+        # some fields have {} and other symbols that must be sanitized
+        if len(key_name) > 1 and key_name[0].isnumeric():
+            key_name = key_name.replace("1", "one").replace("2", "two")
+        for key, value in keys.items():
+            key_name = key_name.replace(key, value)
+        # key_name = key_name.replace(":", "")
+        # key_name = key_name.replace("(", "").replace(")", "")
+        # key_name = key_name.replace("{", "").replace("}", "")
+        # key_name = key_name.replace("][", "_")  # do this first for [0][1] as an example
+        # key_name = key_name.replace("[", "").replace("]", "")
+        # key_name = key_name.replace("<ms>", "").replace("<s>", "")
+        # key_name = key_name.replace("<%>", "_percent")
+        # key_name = key_name.replace("%", "_percent")
+        # key_name = key_name.replace("'", "").replace(" ", "_").replace("-", "_").replace("–", "_")
+        return key_name
+
     @staticmethod
     def sanitize_type_name(type_name: str) -> str:
         """Replaces the C/C# type names with Python related types.
@@ -763,99 +872,27 @@ class Builder(Generic):
         return f"Any #{type_name}"
 
     @staticmethod
-    def convert_values(value: str) -> int | bool | str | list[int] | None:
-        """Converts CSV values from strings into something Python can understand.
+    def sanitize_values(value: str, _sanitize_values: Optional[list[str]] = None) -> str:
+        """Using `.find()` to locate the entry from `_sanitize_values` will use `.replace()` of an empty str `""`.
 
         Parameters
         ----------
         value: :class:`str`
-            The string value to be converted.
+            The value to sanitize.
+        _sanitize_values: :class:`list[str]`, optional
+            The list of strings to search for and replace with `""`, by default ["<Emphasis>", "</Emphasis>"].
 
         Returns
         -------
-        :class:`int | bool | str | list[int] | None`
-            The converted value.
+        :class:`str`
+            The sanitized string.
 
         """
-        if len(value) == 0:
-            return None
-
-        if value.isdigit():
-            return int(value)
-
-        if value.lower() in ["false", "true"]:
-            return value.lower() == "true"
-
-        if value.find(",") != -1:
-            test: str = value.replace(",", "")
-            if test.isdigit():
-                return [int(entry) for entry in value.split(",")]
-            return value
+        sanitize = SANITIZED_VALUES if _sanitize_values is None else _sanitize_values
+        for entry in sanitize:
+            if value.find(entry):
+                value = value.replace(entry, "")
         return value
-
-    def to_typed_dict(self, class_name: str, keys: list[str], key_types: list[str]) -> str:
-        """Generate a :class:`TypedDict` as a string.
-
-        Takes our sanitized keys and key types from our CSV file parsing and generates code as a string.
-
-        Parameters
-        ----------
-        class_name: :class:`str`
-            The name of the :class:`TypedDict` written out as `{class_name}(TypedDict):`.
-        keys: :class:`list[str]`
-            The keys for the :class:`TypedDict`.
-        key_types: :class:`list[str]`
-            The type values for the :class:`TypedDict`.
-
-        Raises
-        ------
-        ValueError
-            If the length of keys and key_types are not equal.
-
-        Returns
-        -------
-        :class:`str`
-            A :class:`TypedDict` as a string.
-
-        """
-        if len(keys) != len(key_types):
-            msg = "The length of keys is not the same as key_types. | keys: %s | key_types: %s"
-            raise ValueError(msg, len(keys), len(key_types))
-        temp: list[str] = []
-        temp.append(f"class {class_name}(TypedDict):")
-        for key, k_type in zip(keys, key_types, strict=False):
-            if len(key) == 0:
-                continue
-            # This only works on Item.csv as the `#` in the file is the actual item id.
-            _key = "id" if key == "#" else key
-            temp.append(f"    {_key}: {k_type}")
-        return "\n".join(temp)
-
-    def generate_enum(self, class_name: str, keys: list[int], values: list[str] | list[int]) -> str:
-        """Takes in keys and values to generate an basic Enum.
-
-        - Structing the Enum in the way of `values = keys` (my_attribute = 0)
-
-        Parameters
-        ----------
-        class_name: :class:`str`
-            The name of the Enum placed into `{class_name}(Enum):`.
-        keys: :class:`list[int]`
-            The int value for the Enum values to equal `(values = keys)`.
-        values: :class:`list[str | int]`
-            The attributes to be used for the Enum.
-
-        Returns
-        -------
-        :class:`str`
-            A :class:`Enum` as a string.
-
-        """
-        temp: list[str] = []
-        temp.append(f"class {class_name}(Enum):")
-        for key, key_value in zip(keys, values, strict=False):
-            temp.append(f"    {key_value} = {key}")
-        return "\n".join(temp)
 
     async def to_enum(
         self,
@@ -926,6 +963,86 @@ class Builder(Generic):
                 data=enum_str,
             )
 
+    def to_typed_dict(self, class_name: str, keys: list[str], key_types: list[str]) -> str:
+        """Generate a :class:`TypedDict` as a string.
+
+        Takes our sanitized keys and key types from our CSV file parsing and generates code as a string.
+
+        Parameters
+        ----------
+        class_name: :class:`str`
+            The name of the :class:`TypedDict` written out as `{class_name}(TypedDict):`.
+        keys: :class:`list[str]`
+            The keys for the :class:`TypedDict`.
+        key_types: :class:`list[str]`
+            The type values for the :class:`TypedDict`.
+
+        Raises
+        ------
+        ValueError
+            If the length of keys and key_types are not equal.
+
+        Returns
+        -------
+        :class:`str`
+            A :class:`TypedDict` as a string.
+
+        """
+        if len(keys) != len(key_types):
+            msg = "The length of keys is not the same as key_types. | keys: %s | key_types: %s"
+            raise ValueError(msg, len(keys), len(key_types))
+        temp: list[str] = []
+        temp.append(f"class {class_name}(TypedDict):")
+        for key, k_type in zip(keys, key_types, strict=False):
+            if len(key) == 0:
+                continue
+            # This only works on Item.csv as the `#` in the file is the actual item id.
+            _key = "id" if key == "#" else key
+            temp.append(f"    {_key}: {k_type}")
+
+        return "\n".join(temp)
+
+    def write_data_to_file(
+        self,
+        file_name: str,
+        data: bytes | dict[Any, Any] | str,
+        path: Path = Path(__file__).parent,
+        *,
+        mode: str = "w+",
+        **kwargs: Any,
+    ) -> None:
+        """Basic file dump with json handling. If the data parameter is of type `dict`, `json.dumps()` will be used with an indent of 4.
+
+        Parameters
+        ----------
+        path: :class:`Path`, optional
+            The Path to write the data, default's to `Path(__file__).parent`.
+        file_name: :class:`str`
+            The name of the file, include the file extension.
+        data: :class:`bytes | dict | str`
+            The data to write out to the path and file_name provided.
+        mode: :class:`str`, optional
+            The mode to open the provided file path with using `<Path.open()>`.
+        **kwargs: :class:`Any`
+            Any additional kwargs to be supplied to `<json.dumps()>`, if applicable.
+
+        """
+        file_name = file_name.lower()
+        with path.joinpath(file_name).open(mode=mode) as file:
+            LOGGER.debug("<%s.%s> | Wrote data to file %s located at: %s", __class__.__name__, "write_data_to_file", path, file_name)
+            if isinstance(data, bytes):
+                file.write(data.decode(encoding="utf-8"))
+            elif isinstance(data, dict):
+                file.write(json.dumps(data, indent=4, **kwargs))
+            else:
+                file.write(data)
+        LOGGER.info(
+            "<%s.%s> | File write successful to path: %s ",
+            __class__.__name__,
+            "write_data_to_file",
+            path.joinpath(file_name).as_posix(),
+        )
+
 
 class Moogle(Generic):
     """Our handler type class for interacting with FFXIV Items, Recipes and other Data structures from XIV Datamining."""
@@ -941,13 +1058,12 @@ class Moogle(Generic):
     _angler_loc_map: Optional[dict[str, int]]
     _angler_invert_loc_map: Optional[dict[int, str]]
     _angler_fish_map: Optional[dict[str, int]]
+    "Data structure is `fish_name : fish_id`."
 
     _garlandtools: GarlandToolsAsync
 
     _items_cache: dict[str, Item]
     "Local cache to our Moogle object for faster data lookup."
-    _items_ref: dict[str | int, str | int]
-    "Quick Ref for Name lookups.  `item_name[str]` : `item_id[int]`"
 
     @property
     def garlandtools(self) -> GarlandToolsAsync:
@@ -1032,8 +1148,15 @@ class Moogle(Generic):
         await self._angler.clean_up()
         await self._garlandtools.close()
 
-    async def build(self) -> Self:
+    async def build(self, *, ignore_validation: bool = False, rebuild_data: bool = False) -> Self:
         """Builds the required arrays and library's for `<Moogle>` to function.
+
+        Parameters
+        ----------
+        rebuild_data: :class:`bool`
+            Relocates current local JSON files, fetches new files and builds new local JSON files, default is False.
+        ignore_validation: :class:`bool`
+            Allows bypassing local JSON/CSV file validation, default is False.
 
         Returns
         -------
@@ -1041,10 +1164,14 @@ class Moogle(Generic):
             A :class:`Moogle` object.
 
         """
-        await self._builder.file_validation()
+        if rebuild_data is True:
+            self._builder._rebuild_files()
+
+        if ignore_validation is False:
+            await self._builder.file_validation()
 
         # Item related dict/JSON
-        self._items: dict[str, DataTypeAliases] = self._load_json(path=DATA_PATH.joinpath("item.json"))
+        self._items = self._load_json(path=DATA_PATH.joinpath("item.json"))
         self._items_ref = self._reference_dict(data=self._items, value_get="name", flip_key_value=True)
 
         # Recipe related dict/JSON
@@ -1054,35 +1181,34 @@ class Moogle(Generic):
         # self._recipe_levels = self._load_json(path=DATA_PATH.joinpath("recipe_level.json"))
 
         # Fishing related dict/JSON
-        self._fish_params: dict[str, DataTypeAliases] = self._load_json(path=DATA_PATH.joinpath("fish_parameter.json"))
-        # { item_id : dict ref id for `fish_parameter.json`}
-        self._fish_params_ref: dict[str | int, str | int] = self._reference_dict(
+        self._fish_params = self._load_json(path=DATA_PATH.joinpath("fish_parameter.json"))
+        self._fish_params_ref = self._reference_dict(
             data=self._fish_params,
             value_get="item",
             flip_key_value=True,
         )
-        self._fishing_spot: dict[str, DataTypeAliases] = self._load_json(path=DATA_PATH.joinpath("fishing_spot.json"))
+        self._fishing_spot = self._load_json(path=DATA_PATH.joinpath("fishing_spot.json"))
 
         # Spearfishing related dict/JSON
-        self._spearfishing_items: dict[str, DataTypeAliases] = self._load_json(path=DATA_PATH.joinpath("spearfishing_item.json"))
-        self._spearfishing_items_ref: dict[str | int, str | int] = self._reference_dict(
+        self._spearfishing_items = self._load_json(path=DATA_PATH.joinpath("spearfishing_item.json"))
+        self._spearfishing_items_ref = self._reference_dict(
             data=self._spearfishing_items,
             value_get="item",
             flip_key_value=True,
         )
-        self._spearfishing_notebook: dict[str, DataTypeAliases] = self._load_json(path=DATA_PATH.joinpath("spearfishing_notebook.json"))
+        self._spearfishing_notebook = self._load_json(path=DATA_PATH.joinpath("spearfishing_notebook.json"))
 
         # Gathering related dict/JSON.
-        self._gathering_items: dict[str, DataTypeAliases] = self._load_json(path=DATA_PATH.joinpath("gathering_item.json"))
-        self._gathering_items_ref: dict[str | int, str | int] = self._reference_dict(
+        self._gathering_items = self._load_json(path=DATA_PATH.joinpath("gathering_item.json"))
+        self._gathering_items_ref = self._reference_dict(
             data=self._gathering_items,
             value_get="item",
             flip_key_value=True,
         )
-        self._gathering_item_levels: dict[str, DataTypeAliases] = self._load_json(path=DATA_PATH.joinpath("gathering_item_level.json"))
+        self._gathering_item_levels = self._load_json(path=DATA_PATH.joinpath("gathering_item_level.json"))
 
         # Location related JSON
-        self._place_names: dict[str, DataTypeAliases] = self._load_json(path=DATA_PATH.joinpath("place_name.json"))
+        self._place_names = self._load_json(path=DATA_PATH.joinpath("place_name.json"))
 
         # FF14 Angler related dict.
         locs: tuple[dict[str, int], dict[int, str]] | None = await self._angler.get_location_id_mapping(include_inverted_map=True)
@@ -1093,6 +1219,7 @@ class Moogle(Generic):
 
         return self
 
+    # TODO(@k8thekat): Move to Builder class?
     def _load_json(self, path: Path, **json_args: Any) -> dict[str, DataTypeAliases]:
         if path.exists() is False:
             msg = "<%s.%s> | The Path provided does not exist. | Path: %s"
@@ -1104,7 +1231,7 @@ class Moogle(Generic):
         data: dict[str, DataTypeAliases] = json.loads(path.read_bytes(), **json_args)
         return data
 
-    # TODO(@k8thekat): Look into better return type definition to handle attribute definition for attributes such as `_items_ref`.
+    # TODO(@k8thekat): Move to Builder class?
     def _reference_dict(
         self,
         data: dict[str, DataTypeAliases],
@@ -1262,6 +1389,7 @@ class Moogle(Generic):
         LOGGER.debug("<%s.%s> | Returning %s partial matches", __class__.__name__, "_partial_match", len(matches))
         return matches
 
+    # TODO(@k8thekat): Move to Item class?
     def _get_item_job_recipes(self, item_id: int) -> JobRecipe | None:
         LOGGER.debug(
             "<%s.%s> | Searching... Job Recipe by Item ID: %s | Entries: %s",
@@ -1358,61 +1486,6 @@ class Moogle(Generic):
         if data is None or "name_no_article" not in data:
             raise MoogleLookupError(str(place_id), "place_id", "_get_place_name", self)
         return PlaceName(data=data, moogle=self)
-
-    def _is_fishable(self, item_id: int) -> Fishing | None:
-        LOGGER.debug(
-            "<%s.%s> | Searching... item_id: %s | entries: %s ",
-            __class__.__name__,
-            "_is_fishable",
-            item_id,
-            len(self._fish_params_ref),
-        )
-
-        key: Optional[str | int] = self._fish_params_ref.get(item_id, None)
-        if key is None:
-            return None
-            # raise MoogleLookupError(str(item_id), "item_id", "_is_fishable", self)
-
-        data: Optional[DataTypeAliases] = self._fish_params.get(str(key), None)
-        if data is None or "fishing_spot" not in data:
-            raise MoogleLookupError(str(key), "item_id", "_is_fishable", self)
-        return Fishing(data=data, angler=self._angler, moogle=self)
-
-    def _is_spearfishing(self, item_id: int) -> SpearFishing | None:
-        LOGGER.debug(
-            "<%s.%s> | Searching... item_id: %s | entries: %s ",
-            __class__.__name__,
-            "_is_spearfishing",
-            item_id,
-            len(self._spearfishing_items_ref),
-        )
-        key: Optional[str | int] = self._spearfishing_items_ref.get(item_id, None)
-        if key is None:
-            return None
-            # raise MoogleLookupError(str(item_id), "item_id", "_is_spearfishing", self)
-
-        data: Optional[DataTypeAliases] = self._spearfishing_items.get(str(key), None)
-        if data is None or "is_visible" not in data:
-            raise MoogleLookupError(str(key), "item_id", "_is_spearfishing", self)
-        return SpearFishing(data=data, angler=self._angler, moogle=self)
-
-    def _is_gatherable(self, item_id: int) -> GatheringItem | None:
-        LOGGER.debug(
-            "<%s.%s> | Searching... item_id: %s | entries: %s ",
-            __class__.__name__,
-            "_is_gatherable",
-            item_id,
-            len(self._gathering_items_ref),
-        )
-        key: Optional[str | int] = self._gathering_items_ref.get(item_id, None)
-        if key is None:
-            return None
-            # raise MoogleLookupError(str(item_id), "item_id", "_is_gatherable", self)
-
-        data: Optional[DataTypeAliases] = self._gathering_items.get(str(key), None)
-        if data is None or ("gathering_item_level" not in data or "quest" not in data or "is_hidden" not in data):
-            raise MoogleLookupError(str(key), "item_id", "_is_gatherable", self)
-        return GatheringItem(data=data, moogle=self)
 
     def _parse_atools_csv(
         self,
@@ -1562,17 +1635,25 @@ class Moogle(Generic):
                     break
         return want_items
 
-    # TODO(@k8thekat): TBD - See about improving iteration logic and data building.
     def teamcraft_list(self, items: list[Item]) -> str:
-        """Create a Teamcraft Import URL from a list of dictionary.
+        """Create a Teamcraft Import URL from a list of :class:`Item`.
+
+        If multiple of the :class:`Item`'s are in supplied list; this function will
+        increment the quantity needed to craft the item by `X` entries of the Item in the data set.
 
         .. note::
             https://wiki.ffxivteamcraft.com/dev-stuff/import-a-list-from-another-tool
 
+
+        .. note::
+            Handles :class:`Item`'s that may not have Crafting Recipes; they will still be added to your list.
+
+
+
         Parameters
         ----------
-        items: :class:`list[ShoppingList]`
-            A list of dictionaries structured as :class:`ShoppingList` from `<Moogle.makeplace_shopping()>`.
+        items: :class:`list[Item]`
+            A list of :class:`Item`'s needed to be turned into a Teamcraft List.
 
         Returns
         -------
@@ -1830,7 +1911,6 @@ class Moogle(Generic):
             stacksize=optimal_stacksize,
         )
 
-    # TODO(@k8thekat): Clean up method code.
     async def currency_spender(
         self,
         currency: Currency = Currency.Allagan_Tomestone_of_Poetics,
@@ -1893,7 +1973,12 @@ class Moogle(Generic):
             )
             # Patch.value = 3 + 1 (4) Item patch is 3.4
             if itemres["item"]["patch"] > patch.value + 1:
-                print("Remove because Patch", itemres["item"]["id"])
+                LOGGER.debug(
+                    "<%s.%s> | Removed Item ID %s due to patch filter. | Patch: ",
+                    __class__.__name__,
+                    itemres["item"]["id"],
+                    patch,
+                )
                 results.pop(itemres["item"]["id"])
                 # market_ids.append(itemres["item"]["id"])
 
@@ -2074,7 +2159,7 @@ class Item(Object):
             else:
                 setattr(self, key, value)
         try:
-            self._gathering = self._moogle._is_gatherable(self.id)
+            self._gathering = self._is_gatherable()
         except MoogleLookupError:
             self._gathering = None
         try:
@@ -2082,11 +2167,13 @@ class Item(Object):
         except MoogleLookupError:
             self._recipe = None
         try:
-            self._fishing = self._moogle._is_fishable(self.id)
+            # self._fishing = self._moogle._is_fishable(self.id)
+            self._fishing = self._is_fishable()
         except MoogleLookupError:
+            LOGGER.debug("<%s.%s> | Item is fishable <MoogleLookupError> | Item ID: %s", __class__.__name__, "__init__", self.id)
             self._fishing = None
         try:
-            self._spear_fishing = self._moogle._is_spearfishing(self.id)
+            self._spear_fishing = self._is_spearfishing()
         except MoogleLookupError:
             self._spear_fishing = None
 
@@ -2184,6 +2271,61 @@ class Item(Object):
             return self._mb_history
         except AttributeError:
             return None
+
+    def _is_fishable(self) -> Fishing | None:
+        LOGGER.debug(
+            "<%s.%s> | Searching... item_id: %s | entries: %s ",
+            __class__.__name__,
+            "_is_fishable",
+            self.id,
+            len(self._moogle._fish_params_ref),
+        )
+
+        key: Optional[str | int] = self._moogle._fish_params_ref.get(self.id, None)
+        if key is None:
+            return None
+            # raise MoogleLookupError(str(item_id), "item_id", "_is_fishable", self)
+
+        data: Optional[DataTypeAliases] = self._moogle._fish_params.get(str(key), None)
+        if data is None or "fishing_spot" not in data:
+            raise MoogleLookupError(str(key), "item_id", "_is_fishable", self)
+        return Fishing(data=data, angler=self._moogle._angler, moogle=self._moogle)
+
+    def _is_spearfishing(self) -> SpearFishing | None:
+        LOGGER.debug(
+            "<%s.%s> | Searching... item_id: %s | entries: %s ",
+            __class__.__name__,
+            "_is_spearfishing",
+            self.id,
+            len(self._moogle._spearfishing_items_ref),
+        )
+        key: Optional[str | int] = self._moogle._spearfishing_items_ref.get(self.id, None)
+        if key is None:
+            return None
+            # raise MoogleLookupError(str(item_id), "item_id", "_is_spearfishing", self)
+
+        data: Optional[DataTypeAliases] = self._moogle._spearfishing_items.get(str(key), None)
+        if data is None or "is_visible" not in data:
+            raise MoogleLookupError(str(key), "item_id", "_is_spearfishing", self)
+        return SpearFishing(data=data, angler=self._moogle._angler, moogle=self._moogle)
+
+    def _is_gatherable(self) -> GatheringItem | None:
+        LOGGER.debug(
+            "<%s.%s> | Searching... item_id: %s | entries: %s ",
+            __class__.__name__,
+            "_is_gatherable",
+            self.id,
+            len(self._moogle._gathering_items_ref),
+        )
+        key: Optional[str | int] = self._moogle._gathering_items_ref.get(self.id, None)
+        if key is None:
+            return None
+            # raise MoogleLookupError(str(item_id), "item_id", "_is_gatherable", self)
+
+        data: Optional[DataTypeAliases] = self._moogle._gathering_items.get(str(key), None)
+        if data is None or ("gathering_item_level" not in data or "quest" not in data or "is_hidden" not in data):
+            raise MoogleLookupError(str(key), "item_id", "_is_gatherable", self)
+        return GatheringItem(data=data, moogle=self._moogle)
 
     async def get_current_marketboard(self, **kwargs: Unpack[CurMarketBoardParams]) -> Optional[CurrentData]:
         """Retrieve the current Marketboard data for this item, while also setting the `<Item.mb_current>` property.
@@ -2336,6 +2478,45 @@ class Item(Object):
                         "shop_name": str(shop_info["obj"].get("t", "N/A")),
                         "url": f"https://www.garlandtools.org/db/#npc/{shop_info['id']}",
                     })
+        return result
+
+    async def get_gathering_nodes(self, *, count: int = 5) -> list[GatheringNode] | None:
+        """Parses GarlandTools data and retrieves Node information, if applicable.
+
+        Parameters
+        ----------
+        count: :class:`int`, optional
+            The number of "nodes" to lookup, by default 5.
+
+        Returns
+        -------
+        :class:`list[GatheringNode] | None`
+            A list of :class:`GatheringNode` to access information related to the gathering node location,
+            otherwise will return `None` if :class:`Item.garlandtools_data` is `None`.
+
+        """
+        result: list[GatheringNode] = []
+
+        if self.garlandtools_data is None:
+            return None
+
+        nodes: list[int] | None = self.garlandtools_data["item"].get("nodes", None)
+        if nodes is None:
+            return None
+
+        for idx, node in enumerate(nodes):
+            if idx > count:
+                return result
+            res: NodeResponse = await self._moogle._garlandtools.node(node_id=node)
+            place: PlaceName = self._moogle._get_place_name(place_id=res["node"]["zoneid"])
+            temp: GatheringNode = {
+                "area_name": res["node"]["name"],
+                "coords": res["node"]["coords"],
+                "zone_name": place.name,
+                "lvl": res["node"]["lvl"],
+                "gt_url": f"https://www.garlandtools.org/db/#node/{res['node']['id']}",
+            }
+            result.append(temp)
         return result
 
 
@@ -2741,8 +2922,8 @@ class Recipe(Object):
         return results
 
 
-class ItemFish(Object):
-    """Generic base object for handling FF14 Angler data and FFXIV item fish information.
+class Fish(Object):
+    """Generic base object for handling FF14 Angler data and FFXIV item information.
 
     . note::
         Inherits attributes and functions from :class:`Object`.
@@ -2750,7 +2931,7 @@ class ItemFish(Object):
 
     Attributes
     ----------
-    item: :class:`int`
+    item_id: :class:`int`
         The item ID.
     name: :class:`Optional[str]`
         The name of the Fish.
@@ -2766,7 +2947,7 @@ class ItemFish(Object):
 
     """
 
-    item: int
+    item_id: int
     name: Optional[str]
     fishing_record_type: int
 
@@ -2792,15 +2973,17 @@ class ItemFish(Object):
         self._angler = angler
         super().__init__(data=data, moogle=moogle)
 
-        item_id = data.get("item")
-        if self._moogle._angler_fish_map is not None and item_id is not None:
-            name = self._moogle._items_ref.get(str(item_id), None)
-            if name is None or isinstance(name, int):
-                self.angler_id = None
-                self.name = None
-            else:
-                self.name = name
-                self.angler_id = self._moogle._angler_fish_map.get(name)
+        self.item_id = data.get("item", 0)
+        if self._moogle._angler_fish_map is not None:
+            try:
+                item_data: DataTypeAliases | None = self._moogle._items.get(str(self.item_id))
+                if item_data is not None:
+                    name = item_data.get("name", "")
+                    self.angler_id = self._moogle._angler_fish_map.get(name)
+                    self.name = name
+            except MoogleLookupError:
+                LOGGER.error("<%s.%s> | Failed to lookup Item ID | Item ID: %s", __class__.__name__, "__init__", self.item_id)
+                return
 
     @overload
     async def get_angler_data(self, *, best_chance: Literal[True]) -> Optional[AnglerFish]: ...
@@ -2814,10 +2997,12 @@ class ItemFish(Object):
         .. note:
             - This will populate the `<ItemFish.ff14angler_data>` property.
 
+
         Parameters
         ----------
         best_chance: :class:`bool`, optional
-            If you want the highest percent catch chance plus the bait and location only, by default False.
+            Returns the highest percent catch chance by bait and location only, by default False.
+            - The first entry of :class:`AnglerFish.baits` would be the "best percent catch".
 
         Returns
         -------
@@ -2826,6 +3011,13 @@ class ItemFish(Object):
 
         """
         LOGGER.debug("<%s.%s> | Best Chance: %s", __class__.__name__, "get_angler_data", best_chance)
+        LOGGER.debug(
+            "<%s.%s> | Angler Fish Map: %s | Name: %s",
+            __class__.__name__,
+            "get_angler_data",
+            self._moogle._angler_fish_map,
+            self.name,
+        )
         if self._moogle._angler_fish_map is None:
             return None
 
@@ -2834,10 +3026,12 @@ class ItemFish(Object):
 
         fish_id: Optional[int] = self._moogle._angler_fish_map.get(self.name, None)
         if fish_id is None:
+            LOGGER.debug("<%s.%s> | Fish ID: %s", __class__.__name__, "get_angler_data", fish_id)
             return None
 
         fish_locs: Optional[list[int]] = await self._angler.get_fish_locations(fish_id=fish_id)
         if fish_locs is None:
+            LOGGER.debug("<%s.%s> | Fish Locs: %s", __class__.__name__, "get_angler_data", fish_locs)
             return None
 
         data: list[AnglerFish] = []
@@ -2886,7 +3080,7 @@ class ItemFish(Object):
         return f"https://en.ff14angler.com/fish/{self.angler_id}"
 
 
-class Fishing(ItemFish):
+class Fishing(Fish):
     """Represents an Final Fantasy 14 Fish.
 
     .. note::
@@ -2962,7 +3156,7 @@ class Fishing(ItemFish):
                 setattr(self, key, value)
 
 
-class SpearFishing(ItemFish):
+class SpearFishing(Fish):
     """Represents an Final Fantasy Fish that is acquired via Spear Fishing.
 
     .. note::
@@ -3027,7 +3221,7 @@ class SpearFishing(ItemFish):
                 continue
             if isinstance(value, int):
                 if key.lower() == "item" and value != 0:
-                    self.item = value
+                    self.item_id = value
                     # try:
                     #     self.item = self._moogle.get_item(item=str(value), limit_results=1)
                     # except MoogleLookupError:

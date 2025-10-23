@@ -716,7 +716,8 @@ class AnglerBaits(PartialAngler):
     bait_name: :class:`str`
         The name of the FF14 bait.
     hook_percent: :class:`float | int`
-        The percent chance catch if using the specified `bait_name` for the `<AnglerFish>` class.
+        The percent chance catch, if using the specified `bait_name` for the `<AnglerFish>` class.
+        - Think `0 = 0%` to `1 = 100%` |
 
     """
 
@@ -778,6 +779,7 @@ class AnglerFish:
     hook_time: Optional[str]
     double_fish: int
     baits: dict[int, AnglerBaits]
+    "Angler Bait ID : <AnglerBaits> aka location specific bait information."
 
     _raw: FishingData
 
@@ -804,6 +806,7 @@ class AnglerFish:
         self.item_id = item_id
         self.location_name = location_name
         self.baits = {}
+
         for key, value in data.items():
             if key.lower() == "baits" and isinstance(value, dict):
                 for k, v in value.items():  # type: ignore[reportUnkownVariableType]
@@ -818,7 +821,7 @@ class AnglerFish:
 
     def __repr__(self) -> str:  # noqa: D105
         return f"\n\n__{self.__class__.__name__}__\n" + "\n".join([
-            f"{e}: {getattr(self, e)}" for e in sorted(self.__dict__) if e.startswith("_") is False
+            f"{e}: {getattr(self, e)}" for e in self.__dict__ if e.startswith("_") is False
         ])
 
     def best_bait(self) -> Optional[AnglerBaits]:

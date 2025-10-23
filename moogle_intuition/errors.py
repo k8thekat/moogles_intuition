@@ -37,3 +37,4 @@ class MoogleLookupError(Exception):  # noqa: D101
         message = "<%s.%s> | We failed to lookup %s | %s: %r"
         super().__init__(message, obj.__class__.__name__, function_name, query, param_name, query)
         LOGGER.error(message, obj.__class__.__name__, function_name, query, param_name, query)
+

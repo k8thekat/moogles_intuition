@@ -21,6 +21,7 @@ Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA
 from __future__ import annotations
 
 from enum import Enum, IntEnum
+from typing import Optional
 
 __all__ = (
     "CraftType",
@@ -46,8 +47,46 @@ class CraftType(Enum):
     Alchemist = 6
     Culinarian = 7
 
+    def to_abbr(self, name: Optional[str] = None) -> str:
+        """Converters the `name` attribute into it's abbreviated form.
+
+        ```_mapping: dict[str, str] = {
+            "Carpenter": "CRP",
+            "Blacksmith": "BSM",
+            "Armorer": "ARM",
+            "Goldsmith": "GSM",
+            "Leatherworker": "LTW",
+            "Weaver": "WVR",
+            "Alchemist": "ALC",
+            "Culinarian": "CUL",
+        }
+        ```
+
+        Returns
+        -------
+            A :class:`str` represensation of the abbreviated :class:`Self.name` if possible.
+
+        """
+        _mapping: dict[str, str] = {
+            "Carpenter": "CRP",
+            "Blacksmith": "BSM",
+            "Armorer": "ARM",
+            "Goldsmith": "GSM",
+            "Leatherworker": "LTW",
+            "Weaver": "WVR",
+            "Alchemist": "ALC",
+            "Culinarian": "CUL",
+        }
+        if name is not None:
+            return _mapping.get(name, "UNK")
+        return _mapping.get(self.name, "UNK")
+
 
 class Currency(IntEnum):
+    """Representation of FF14 Currencies.
+
+    Values:
+    ---
     Allagan_Tomestone_of_Poetics = 28
     Serpent_Seal = 21
     Allagan_Tomestone_of_Mathematics = 48
@@ -60,6 +99,22 @@ class Currency(IntEnum):
     Orange_Gatherers_Scrip = 41785
     Orange_Crafters_Scrip = 41784
     Purple_Gatherers_Scrip = 33914
+    Gil = 0
+    """
+
+    Allagan_Tomestone_of_Poetics = 28
+    Serpent_Seal = 21
+    Allagan_Tomestone_of_Mathematics = 48
+    Purple_Crafters_Scrips = 33913
+    Allagan_Tomestone_of_Heliometry = 47
+    Allied_Seal = 27
+    Centurio_Seal = 10307
+    Bicolor_Gemstone = 26807
+    Skybuilders_Scrip = 28063
+    Orange_Gatherers_Scrip = 41785
+    Orange_Crafters_Scrip = 41784
+    Purple_Gatherers_Scrip = 33914
+    Gil = 0
 
 
 class EquipSlotCategory(Enum):
@@ -388,6 +443,10 @@ class ItemUICategory(Enum):
 
 
 class Expansion(Enum):
+    """Expansion Enum...
+
+    Parameters
+    ----------
     A_Realm_Reborn = 2
     Heavensward = 3
     Stormblood = 4
@@ -395,20 +454,23 @@ class Expansion(Enum):
     Endwalker = 6
     Dawntrail = 7
 
+    """
 
-class ColorRef(Enum):
-    Acorn_Brown = "8E581B00"
-    Chestnut_Brown = "3D290DFF"
-    Chocolate_Brown = "6E3D2400"
-    Gloom_Purple = "51456000"
-    Goobbue_Grey = "89878400"
-    Iris_Purple = "B79EBC00"
-    Loam_Brown = "3F332900"
-    Lotus_Pink = "FECEF500"
-    Orchard_Brown = "64421600"
-    Plum_Purple = "79526C00"
-    Qiqirn_Brown = "996E3F00"
-    Regal_Purple = "66304EFF"
-    Rose_Pink = "E69F9600"
-    Snow_White = "E4DFD000"
-    Soot_Black = "2B292300"
+    A_Realm_Reborn = 2
+    Heavensward = 3
+    Stormblood = 4
+    Shadowbringers = 5
+    Endwalker = 6
+    Dawntrail = 7
+
+    # @staticmethod
+    # def resolve_patch(value: float) -> Expansion:
+    #     """Resolve a float patch value into an :class:`Expansion` object.
+
+    #     Parameters
+    #     ----------
+    #     value: :class:`float`
+    #         The float value representing the patch, eg `2.4`.
+
+    #     """
+    #     return Expansion(value=int(value))

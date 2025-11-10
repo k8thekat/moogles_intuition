@@ -20,12 +20,12 @@ Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, NotRequired, Optional, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, Optional, TypedDict
 
 if TYPE_CHECKING:
     # import datetime
 
-    from async_universalis import CurrentData, DataCenter, HistoryData, ItemQuality, UniversalisAPI, World
+    from async_universalis import DataCenter, UniversalisAPI, World
     from ff14angler import Angler
 
     from .modules import Currency, Item, Moogle
@@ -35,7 +35,7 @@ class CurMarketBoardParams(TypedDict):
     world_or_dc: NotRequired[Optional[DataCenter | World]]
     num_listings: NotRequired[int]
     num_history_entries: NotRequired[int]
-    item_quality: NotRequired[ItemQuality]
+    item_quality: NotRequired[Literal["HQ", "NQ"]]
     trim_item_fields: NotRequired[bool]
 
 
@@ -71,7 +71,7 @@ class FishParameterData(TypedDict):
     achievement_credit: int
 
 
-class GatheringItemData(TypedDict):
+class GatheringData(TypedDict):
     id: int
     item: int  # Row
     gathering_item_level: int  # GatheringItemLevelConvertTable
@@ -525,59 +525,10 @@ class SpearFishingNotebookData(TypedDict):
     gathering_point_base: int
 
 
-class MakePlaceData(TypedDict):
-    lightLevel: float
-    houseSize: str
-    interiorFixture: list[FurnitureFixtures]
-    interiorScale: int
-    interiorFurniture: list[FurnitureFixtures]
-    exteriorScale: int
-    exteriorFixture: list[FurnitureFixtures]
-    exteriorFurniture: list[FurnitureFixtures]
-    metaData: dict[str, int]
-    properties: dict[str, str]
-
-
-class FurnitureFixtures(TypedDict):
-    level: NotRequired[str]
-    type: NotRequired[str]
-    name: str
-    itemId: int
-    color: NotRequired[str]
-    transform: NotRequired[Transform]
-    properties: NotRequired[dict[Any, Any]]
-
-
-class Transform(TypedDict):
-    location: list[float]
-    rotation: list[float]
-    scale: list[int]
-
-
-# class ShoppingPartial(TypedDict):
-#     """Base Shopping data structure."""
-
-#     item_name: str
-#     item_id: int
-#     quantity: int
-#     marketboard: Optional[CurrentData]
-#     recipe: Optional[JobRecipe]
-#     garlandtools: Optional[ItemResponse]
-
-
-class ShoppingCurrency(TypedDict):
+class CurrencySpender(TypedDict):
+    item: Item
     currency: Currency
     cost: int
-    marketboard: CurrentData | HistoryData | None
-
-
-class Crafting(TypedDict):
-    item: Item
-    count: int
-    marketboard: NotRequired[CurrentData]
-    vendors: NotRequired[list[Vendor]]
-    tradeshops: NotRequired[list[Vendor]]
-    # craftable: bool
 
 
 class Vendor(TypedDict):
@@ -590,16 +541,31 @@ class Vendor(TypedDict):
     "Any tradeable currency such as Poetics or Seals, if applicable."
 
 
-class MakePlaceShopping(TypedDict):
-    craftables: dict[int, str]
-    non_market: list[Item]
+class Shopping(TypedDict, total=False):
+    teamcraft_url: str
+    total_item_count: int
+    # marketboard_gil: int
+    items: dict[int, ShoppingItem]
+    "item_id : `<MakePlaceItem>`"
+    currencies: ShoppingCurrency
+    " `<Currency.id>` : count(int)"
 
+
+class ShoppingItem(TypedDict):
+    item: Item
+    count: int
+    ingredients: list[ShoppingItem]
+
+
+class ShoppingCurrency(TypedDict):
+    marketboard_gil: int
+    currencies: dict[int, int]
 
 class HTMLKeys(TypedDict):
     replace: str
 
 
-class GatheringNode(TypedDict):
+class GatheringNodeData(TypedDict):
     """Gathering location information related to an :class:`Item`."""
 
     area_name: str  # aka Node["name"]

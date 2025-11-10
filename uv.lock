@@ -103,23 +103,23 @@ wheels = [
 
 [[package]]
 name = "async-garlandtools"
-version = "1.0.0.dev0"
+version = "1.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "aiohttp-client-cache" },
     { name = "aiosqlite" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f3/73/3032ba47968df4e751bf659f7b7132de97661b148a0e47321131d5c9fc61/async_garlandtools-1.0.0.dev0.tar.gz", hash = "sha256:b66d159ac247582e51643ad0cf33eb82667c2109e05e9598eac31de02f75c243", size = 18521, upload-time = "2025-08-25T02:33:16.702Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a9/cd/261b8d5700b7f5206bf00c6254fd89bb6eb6bd3a792e683b1a133d64dd3a/async_garlandtools-1.2.2.tar.gz", hash = "sha256:2063a7c13f182ca8912a01ca5ae4c828237e94139044792075857c6f197adccf", size = 18687, upload-time = "2025-10-31T19:03:54.925Z" }
 
 [[package]]
 name = "async-universalis"
-version = "4.1.0.dev0"
+version = "5.0.0.dev0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/03/5e/38dc46307fd0392642a569d4dbb8f4f08691810b0894a747dd8301c23547/async_universalis-4.1.0.dev0.tar.gz", hash = "sha256:1d0b173628f06762c91ae1bc59ce3697447ca249d64aa4d62e973043e5356b01", size = 1500067, upload-time = "2025-09-17T19:36:51.309Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c2/49/9772eded12a9733e86fd302119c5b53688e9e6dce656112b774ef03f3d5a/async_universalis-5.0.0.dev0.tar.gz", hash = "sha256:2ad4e6acf8f60a4f2205763f458b4086a1f912c3bfbff1d06b406b7a0eab89ff", size = 1500360, upload-time = "2025-11-10T01:37:31.938Z" }
 
 [[package]]
 name = "attrs"
@@ -233,7 +233,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "async-garlandtools", specifier = ">=0.1.3.dev0" },
+    { name = "async-garlandtools" },
     { name = "async-universalis" },
     { name = "beautifulsoup4", specifier = ">=4.13.4" },
     { name = "thefuzz", specifier = ">=0.22.1" },

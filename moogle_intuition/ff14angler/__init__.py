@@ -47,9 +47,11 @@ LOGGER: logging.Logger = logging.getLogger(__name__)
 
 class PartialAngler:
     _repr_keys: list[str]
+    _raw: FishingData | Baits
 
-    def __init__(self) -> None:
+    def __init__(self, data: FishingData | Baits) -> None:
         LOGGER.debug("<%s.__init__()>", __class__.__name__)
+        self._raw = data
 
     def __str__(self) -> str:
         return self.__repr__()
@@ -723,7 +725,6 @@ class AnglerBaits(PartialAngler):
 
     bait_name: str
     hook_percent: float | int
-    _raw: Baits
 
     def __init__(self, data: Baits) -> None:
         """Build the :class:`AnglerBaits` object.
@@ -731,16 +732,16 @@ class AnglerBaits(PartialAngler):
         Parameters
         ----------
         data: :class:`BaitsTyped`
-            _description_.
+            The FF14 Angler bait data.
 
         """
         LOGGER.debug("<%s.__init__()> data: %s", __class__.__name__, data)
-        self._raw = data
+        super().__init__(data=data)
         for key, value in data.items():
             setattr(self, key, value)
 
 
-class AnglerFish:
+class AnglerFish(PartialAngler):
     """Represents a FF14 Angler fish data.
 
     .. warning::
@@ -760,7 +761,7 @@ class AnglerFish:
         The average time in seconds it takes for the fish to bite.
     double_fish: :class:`int`
         The number of fish returned when using "Double Hook" Fishing action.
-    baits: :class:`dict[int, FishingBaits]`
+    baits: :class:`dict[int, AnglerBaits]`
         The baits used to hook the fish separated by the ID of the bait in relation to FF14Angler bait IDs.
 
     Property
@@ -781,7 +782,6 @@ class AnglerFish:
     baits: dict[int, AnglerBaits]
     "Angler Bait ID : <AnglerBaits> aka location specific bait information."
 
-    _raw: FishingData
 
     @property
     def ff14angler_url(self) -> str:
@@ -802,7 +802,7 @@ class AnglerFish:
 
         """
         LOGGER.debug("<%s.__init__()> location: %s | data: %s", __class__.__name__, location_name, data)
-        self._raw = data
+        super().__init__(data=data)
         self.item_id = item_id
         self.location_name = location_name
         self.baits = {}
@@ -816,13 +816,14 @@ class AnglerFish:
             else:
                 setattr(self, key, value)
 
-    def __str__(self) -> str:  # noqa: D105
-        return self.__repr__()
 
-    def __repr__(self) -> str:  # noqa: D105
-        return f"\n\n__{self.__class__.__name__}__\n" + "\n".join([
-            f"{e}: {getattr(self, e)}" for e in self.__dict__ if e.startswith("_") is False
-        ])
+    # def __str__(self) -> str:
+    #     return self.__repr__()
+
+    # def __repr__(self) -> str:
+    #     return f"\n\n__{self.__class__.__name__}__\n" + "\n".join([
+    #         f"{e}: {getattr(self, e)}" for e in self.__dict__ if e.startswith("_") is False
+    #     ])
 
     def best_bait(self) -> Optional[AnglerBaits]:
         """Retrieves the optimal chance Fishing bait related to the `<AnglerFish.location_name>` class.

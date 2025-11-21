@@ -40,3 +40,13 @@ class Transform(TypedDict):
     location: list[float]
     rotation: list[float]
     scale: list[int]
+
+
+class AllagonToolsInventoryCSV(TypedDict):
+    favourite: NotRequired[bool]
+    icon: NotRequired[str]
+    name: str
+    type: str
+    total_quantity_available: int
+    source: str
+    inventory_location: str

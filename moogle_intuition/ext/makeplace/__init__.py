@@ -17,44 +17,45 @@ along with Moogle's Intuition; see the file COPYING.  If not, write to the Free
 Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA
 02110-1301, USA.
 """
+from __future__ import annotations
 
 import csv
 import datetime
 import logging
-from typing import TYPE_CHECKING, Literal, Optional, Unpack, overload
-
-import aiohttp
-from aiohttp_client_cache.session import CachedSession
-from async_garlandtools import GarlandToolsAsync
-from async_universalis import CurrentData, CurrentDataEntries, UniversalisAPI
+from typing import TYPE_CHECKING, ClassVar, Literal, Optional, Unpack, overload
 
 from moogle_intuition import Item, Moogle
-from moogle_intuition._enums import InventoryLocation
-from moogle_intuition._types import CurMarketBoardParams, Shopping, ShoppingCurrency, ShoppingItem
 from moogle_intuition.errors import MoogleLookupError
-from moogle_intuition.ff14angler import Angler
-from moogle_intuition.modules import FishingSpot, InventoryItem, PlaceName, SpearFishingSpot
+from moogle_intuition.modules import FishingSpot, PlaceName, SpearFishingSpot
 
-from ._enums import ColorRef
-from ._types import FurnitureFixtures, FurnitureMaterial, FurnitureProperty, MakePlaceData
+from ._enums import ColorRef, InventoryLocation
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from moogle_intuition._types import AllagonToolsInventoryCSV
+    import aiohttp
+    from aiohttp_client_cache.session import CachedSession
+    from async_garlandtools import GarlandToolsAsync
+    from async_universalis import CurrentData, CurrentDataEntries, UniversalisAPI
+
+    from moogle_intuition._types import CurMarketBoardParams, Shopping, ShoppingCurrency, ShoppingItem
+    from moogle_intuition.ff14angler import Angler
+
+    from ._types import AllagonToolsInventoryCSV, FurnitureFixtures, FurnitureMaterial, FurnitureProperty, MakePlaceData
+
 
 
 LOGGER = logging.getLogger(__name__)
 
 ATOOLS_OMIT_INV_LOCS: list[InventoryLocation] = [
-    InventoryLocation.free_company,
-    InventoryLocation.currency,
-    InventoryLocation.crystals,
-    InventoryLocation.glamour_chest,
-    InventoryLocation.market,
-    InventoryLocation.armoire,
-    InventoryLocation.armory,
-    InventoryLocation.equipped_gear,
+    InventoryLocation.FREE_COMPANY,
+    InventoryLocation.CURRENCY,
+    InventoryLocation.CRYSTALS,
+    InventoryLocation.GLAMOUR_CHEST,
+    InventoryLocation.MARKET,
+    InventoryLocation.ARMOIRE,
+    InventoryLocation.ARMORY,
+    InventoryLocation.EQUIPPED_GEAR,
 ]
 
 ATOOLS_OMIT_ITEM_NAMES: list[str] = []
@@ -67,6 +68,7 @@ class MakePlace(Moogle):
 
     def __init__(
         self,
+        *,
         session: Optional[aiohttp.ClientSession | CachedSession] = None,
         universalis: Optional[UniversalisAPI] = None,
         angler: Optional[Angler] = None,
@@ -161,7 +163,7 @@ class MakePlace(Moogle):
 
         return inventory
 
-    def _parse_makeplace_json(self, data: MakePlaceData) -> list[Item]:
+    def _parse_makeplace_json(self, data: MakePlaceData) -> list[InventoryItem]:
         """Parses MakePlace JSON data structure into a list of :class:`Item`.
 
         .. note::
@@ -184,7 +186,7 @@ class MakePlace(Moogle):
             If we are unable to find any of the Item IDs in the data provided for any reason.
 
         """
-        items: list[Item] = []
+        items: list[InventoryItem] = []
         keys: list[str] = ["interiorFixture", "interiorFurniture", "exteriorFixture", "exteriorFurniture"]
         bad_keys: list[str] = ["district", "side door"]
         for key in keys:
@@ -192,16 +194,43 @@ class MakePlace(Moogle):
             for entry in value:
                 if "type" in entry and entry["type"].lower() in bad_keys:
                     continue
-                items.append(self.get_item(item=str(entry["itemId"]), limit_results=1))
+                try:
+                    item = self.get_item(item=str(entry["itemId"]), limit_results=1)
+                    struct: AllagonToolsInventoryCSV = {"name" : item.name,
+                                                                    "type": "NQ",
+                                                                    "total_quantity_available" : 1,
+                                                                    "source": "makeplace",
+                                                                    "inventory_location": "0"}
+                    inv_item = InventoryItem(item, struct)
+                    for item_entry in items:
+                        if item_entry.item == inv_item:
+                            item_entry.quantity +=1
+                except MoogleLookupError:
+                        LOGGER.error("<%s.%s> | Failed Item lookup. | Value: %s",
+                                     __class__.__name__,
+                                     "_parse_makeplace_json",
+                                     str(entry["itemId"]))
+                        continue
                 properties: FurnitureProperty | None = entry.get("properties")
                 if properties is not None:
                     colour: str | None = properties.get("color")
                     if colour is not None:
                         temp = ""
+
                         try:
                             temp = ColorRef(colour[:-2])
                             item = self.get_item(item=temp.name.replace("_", " "), limit_results=1)
-                            items.append(item)
+                            struct: AllagonToolsInventoryCSV = {"name" : temp.name.replace("_", " "),
+                                                                "type": "NQ",
+                                                                "total_quantity_available": 1,
+                                                                "source": "makeplace",
+                                                                "inventory_location": "0"}
+                            inv_item = InventoryItem(item, struct)
+                            # Update our quantity...
+                            for item_entry in items:
+                                if item_entry.item == inv_item:
+                                    item_entry.quantity +=1
+
                         except ValueError:
                             LOGGER.error(
                                 "<%s.%s> | Failed Color Hex lookup. | Value: %s",
@@ -219,8 +248,20 @@ class MakePlace(Moogle):
                         temp = ""
                         try:
                             temp = material.get("itemId")
-                            item: Item = self.get_item(item=str(temp), limit_results=1)
-                            items.append(item)
+                            try:
+                                item: Item = self.get_item(item=str(temp), limit_results=1)
+                            except MoogleLookupError:
+                                LOGGER.error("<%s.%s> | Failed Item lookup. | Value: %s", __class__.__name__, "_parse_makeplace_json", temp)
+                                continue
+                            struct: AllagonToolsInventoryCSV = {"name" : item.name,
+                                                                "type": "NQ",
+                                                                "total_quantity_available": 1,
+                                                                "source": "makeplace",
+                                                                "inventory_location": "0"}
+                            inv_item = InventoryItem(item, struct)
+                            for item_entry in items:
+                                if item_entry.item == inv_item:
+                                    item_entry.quantity +=1
                         except MoogleLookupError:
                             LOGGER.error("<%s.%s> | Failed Item lookup. | Value: %s", __class__.__name__, "_parse_makeplace_json", temp)
                             continue
@@ -433,13 +474,13 @@ class MakePlace(Moogle):
 
         return output
 
-    async def makeplace_create_itemlist(
+    async def create_itemlist(
         self,
         makeplace_data: MakePlaceData,
         atools_data: bytes | str,
         omit_item_names: Optional[list[str]] = None,
         omit_inv_locs: Optional[list[InventoryLocation]] = None,
-    ) -> list[Item]:
+    ) -> list[InventoryItem]:
         """Compares MakePlace JSON data with Allagon Tools CSV data to find items not in your inventory.
 
         Parameters
@@ -458,20 +499,20 @@ class MakePlace(Moogle):
 
         Returns
         -------
-        :class:`list[Item]`
+        :class:`list[InventoryItem]`
             A list of Moogles Intution :class:`Item` objects representing the items not found in your inventory.
 
         """
         have_items: list[InventoryItem] = self._parse_atools_csv(atools_data, omit_inv_locs=omit_inv_locs, omit_item_names=omit_item_names)
-        want_items: list[Item] = self._parse_makeplace_json(makeplace_data)
-        for entry in have_items:
+        want_items: list[InventoryItem] = self._parse_makeplace_json(makeplace_data)
+        for inv_entry in have_items:
             for want in want_items:
                 # We found an item we want in our inventory; so remove it from our want list.
                 # We want to make sure we have enough in our inventory. As Want Items will have duplicates of a
                 # single Item to simulate quantity needed.
-                if want.id == entry.id and entry.quantity > 0:
+                if want.id == inv_entry.id and inv_entry.quantity > 0:
                     want_items.remove(want)
-                    entry.quantity -= 1
+                    inv_entry.quantity -= 1
                     break
         return want_items
 
@@ -481,6 +522,7 @@ class MakePlace(Moogle):
     @overload
     async def makeplace_housing(self, items: list[Item], *, to_markdown: bool = ...) -> Shopping: ...
 
+    # TODO(@k8thekat): See about using our InventoryItem array and deduct item.recipe ingredients from our on hand quantity/etc
     async def makeplace_housing(
         self,
         items: list[Item],
@@ -540,12 +582,8 @@ class MakePlace(Moogle):
                 # set up an ingredients list related to our Item.
                 item_ingredients: list[ShoppingItem] = shopping["items"][item.id].get("ingredients", [])
                 for recipe in item.recipe:
-                    if recipe is None:
-                        continue
-
                     for ingredient in recipe:
-                        if ingredient is None or isinstance(ingredient[0], int) or (ingredient[0] is None or ingredient[1] is None):
-                            continue
+
                         # If the ingredient has a recipe; let's parse it's information.
                         if ingredient[0].recipe is not None:
                             # We are going to access the "items" key only to update our parent level Item.
@@ -573,3 +611,129 @@ class MakePlace(Moogle):
         if to_markdown is True:
             return self._parse_makeplace_shopping(data=shopping)
         return shopping
+
+
+
+class InventoryItem(Item):
+    """Represents an Item from a parsed Allagon Tools Inventory CSV file.
+
+    Attributes
+    ----------
+    name: :class:`str`
+        The name of the item.
+    id: :class:`int`
+        The item ID.
+    quality: :class:`Literal["HQ", "NQ"]`
+        The quality of the item, either HQ or NQ.
+    quantity: :class:`int`
+        The number of said item from the CSV data.
+    source: :class:`str`
+        Who has the item, typically a character, retainer or FC name.
+    location: :class:`InventoryLocationEnum`
+        What type of inventory the item is located, such as Bag, Saddlebag, Glamour chest...
+
+    """
+
+    name: str
+    id: int
+    quality: Literal["HQ", "NQ"]
+    quantity: int
+    source: str
+    location: InventoryLocation
+
+    _locations: ClassVar[dict[str, InventoryLocation]] = {
+        "armory": InventoryLocation.ARMORY,
+        "armoire": InventoryLocation.ARMOIRE,
+        "bag": InventoryLocation.BAG,
+        "currency": InventoryLocation.CURRENCY,
+        "crystals": InventoryLocation.CRYSTALS,
+        "equipped gear": InventoryLocation.EQUIPPED_GEAR,
+        "free company": InventoryLocation.FREE_COMPANY,
+        "glamour chest": InventoryLocation.GLAMOUR_CHEST,
+        "market": InventoryLocation.MARKET,
+        "premium saddlebag left": InventoryLocation.PREMIUM_SADDLEBAG_LEFT,
+        "premium saddlebag right": InventoryLocation.PREMIUM_SADDLEBAG_RIGHT,
+        "saddlebag left": InventoryLocation.SADDLEBAG_LEFT,
+        "saddlebag right": InventoryLocation.SADDLEBAG_RIGHT,
+        "housing interior placed": InventoryLocation.HOUSING_INTERIOR_PLACED,
+        "housing interior storeroom": InventoryLocation.HOUSING_INTERIOR_STORED,
+        "housing exterior placed": InventoryLocation.HOUSING_EXTERIOR_PLACED,
+        "housing exterior storeroom": InventoryLocation.HOUSING_EXTERIOR_STORED,
+    }
+
+    __slots__ = (
+        "inventory_location",
+        # "name",
+        "source",
+        "total_quantity_available",
+        "type",
+    )
+
+    # def __init__(self, item_id: int, data: AllagonToolsInventoryCSV, **kwargs: Unpack[ObjectParams]) -> None:
+    def __init__(self, item: Item, atools_data: AllagonToolsInventoryCSV) -> None:
+        """Build your InventoryItem object.
+
+        Parameters
+        ----------
+        item: :class:`int`
+            Our Moogle's Intuition :class:`Item` object.
+        atools_data: :class:`AllagonToolsInventoryCSV`
+            The JSON data.
+
+        """
+        # super().__init__(atools_data, moogle=kwargs["moogle"])
+        # self.id = item_id
+        self.item: Item = item
+        self.id = item.id
+        self.name = item.name
+        self._repr_keys = ["name", "id", "quality", "quantity", "location", "source"]
+        for key in self.__slots__:
+            value: Optional[int | bool | str] = atools_data.get(key, None)
+            if value is None:
+                continue
+
+            if key.lower() == "type":
+                if isinstance(value, str) and value.lower() == "nq":
+                    self.quality = "NQ"
+
+                elif isinstance(value, str) and value.lower() == "hq":
+                    self.quality = "HQ"
+
+            elif key.lower() == "total_quantity_available":
+                self.quantity = int(value)
+
+            elif key.lower() == "inventory_location" and isinstance(value, str):
+                self.location = self._convert_inv_loc_to_enum(location=value)
+
+            else:
+                setattr(self, key, value)
+
+    def __eq__(self, other: object) -> bool:
+        return super().__eq__(other=other)
+
+    def __hash__(self) -> int:
+        return super().__hash__()
+
+    def __lt__(self, other: object) -> bool:
+        return super().__lt__(other=other)
+
+    @staticmethod
+    def _convert_inv_loc_to_enum(location: str) -> InventoryLocation:
+        """Convert a provided location string from the Allagon Tools CSV into a :class:`InventoryLocationEnum`.
+
+        Parameters
+        ----------
+        location: :class:`str`
+            The inventory location string.
+
+        Returns
+        -------
+        :class:`InventoryLocationEnum`
+            The converted inventory location as an Enum.
+
+        """
+        for key, value in InventoryItem._locations.items():
+            if location.lower().startswith(key):
+                return value
+
+        return InventoryLocation.NULL

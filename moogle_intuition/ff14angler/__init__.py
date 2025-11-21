@@ -58,14 +58,22 @@ class PartialAngler:
 
     def __repr__(self) -> str:
         try:
-            return f"\n\n__{self.__class__.__name__}__\n" + "\n".join([
-                f"{e}: {getattr(self, e)}" for e in self._repr_keys if e.startswith("_") is False
-            ])
+            res: str = f"\n\n__{self.__class__.__name__}__\n"
+            for entry in self._repr_keys:
+                if entry.startswith("_"):
+                    continue
+                try:
+                    value = getattr(self, entry)
+                    res += f"{entry}: {value}\n"
+                except AttributeError:
+                    continue
+
+            return res  # noqa: TRY300 # I want to continue generating our str return.
+        # This is to catch any objects without a `_repr_keys` defined.
         except AttributeError:
             return f"\n\n__{self.__class__.__name__}__\n" + "\n".join([
                 f"{e}: {getattr(self, e)}" for e in sorted(self.__dict__) if e.startswith("_") is False
             ])
-
 
 class Angler(PartialAngler):
     """A class to handle parsing `https://en.ff14angler.com/`.
@@ -745,7 +753,7 @@ class AnglerFish(PartialAngler):
     """Represents a FF14 Angler fish data.
 
     .. warning::
-        - The `item_id` attribute is *NOT* the same as `<Item.item_id>`
+        - The `item_id` attribute is *NOT* the same as :class:`Item.item_id`
 
     Attributes
     ----------
@@ -806,7 +814,7 @@ class AnglerFish(PartialAngler):
         self.item_id = item_id
         self.location_name = location_name
         self.baits = {}
-
+        self._repr_keys = ["fish_name", "item_id", "location_name", "hook_time", "restrictions", "baits"]
         for key, value in data.items():
             if key.lower() == "baits" and isinstance(value, dict):
                 for k, v in value.items():  # type: ignore[reportUnkownVariableType]
@@ -816,14 +824,6 @@ class AnglerFish(PartialAngler):
             else:
                 setattr(self, key, value)
 
-
-    # def __str__(self) -> str:
-    #     return self.__repr__()
-
-    # def __repr__(self) -> str:
-    #     return f"\n\n__{self.__class__.__name__}__\n" + "\n".join([
-    #         f"{e}: {getattr(self, e)}" for e in self.__dict__ if e.startswith("_") is False
-    #     ])
 
     def best_bait(self) -> Optional[AnglerBaits]:
         """Retrieves the optimal chance Fishing bait related to the `<AnglerFish.location_name>` class.

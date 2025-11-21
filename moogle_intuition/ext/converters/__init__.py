@@ -40,7 +40,7 @@ class Converter:
     @staticmethod
     def parse_shopping_data(
         data: dict[int, CurrencySpender],
-        sale_velocity_limit: int = 0,
+        sale_velocity_limit: int = 1,
         timefmt: str = "%d/%m | %H:%M(%Z)",
     ) -> list[str]:
         """Parses the data :class:`CurrencySpender` from the function :class:`Moogle.currency_spender`.
@@ -55,7 +55,7 @@ class Converter:
         data: :class:`dict[int, CurrencySpender]`
             The resulting data from :class:`Moogle.currency_spender`.
         sale_velocity_limit: :class:`int`, optional
-            The minimum threshold for the sale velocity of the item, by default 0.
+            The minimum threshold for the sale velocity of the item, by default 1.
         timefmt: :class:`str`, optional
             The :class:`datetime.strftime()` format to use, by default "%d/%m | %H:%M(%Z)".
 
@@ -75,7 +75,7 @@ class Converter:
             entries.append(value["item"].mb_current)
 
         for cur_data in sorted(entries, key=lambda x: x.regular_sale_velocity):
-            if cur_data.regular_sale_velocity <= sale_velocity_limit:
+            if cur_data.regular_sale_velocity < sale_velocity_limit:
                 continue
             value: CurrencySpender | None = data.get(cur_data.item_id)
             cost: int = 0 if value is None else value["cost"]
@@ -95,7 +95,12 @@ class Converter:
         return output
 
     @staticmethod
-    def parse_crafting_cost(data: dict[int, ShoppingItem], *, recipe_item: Optional[Item] = None, currency: Optional[ShoppingCurrency] = None) -> str:
+    def parse_crafting_cost(
+        data: dict[int, ShoppingItem],
+        *,
+        recipe_item: Optional[Item] = None,
+        currency: Optional[ShoppingCurrency] = None,
+    ) -> str:
         """Handles the information from :class:`Recipe.get_crafting_cost()` and presents it in a readable compact format.
 
         .. note::

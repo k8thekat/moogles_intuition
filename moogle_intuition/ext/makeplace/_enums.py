@@ -20,7 +20,7 @@ Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, IntEnum
 from typing import Literal
 
 __all__ = ("ColorRef",)
@@ -29,115 +29,115 @@ __all__ = ("ColorRef",)
 class ColorRef(Enum):
     """Generic colour reference chart based upon FFXIV Dyes to Hex color codes without the alpha bit."""
 
-    Snow_White = "E4DFD0"
-    Ash_Grey = "ACA8A2"
-    Goobbue_Grey = "898784"
-    Slate_Grey = "656565"
-    Charcoal_Grey = "484742"
-    Soot_Black = "2B2923"
-    Rose_Pink = "E69F96"
-    Lilac_Purple = "836969"
-    Rolanberry_Red = "5B1729"
-    Dalamud_Red = "781A1A"
-    Rust_Red = "622207"
-    Wine_Red = "451511"
-    Coral_Pink = "CC6C5E"
-    Blood_Red = "913B27"
-    Salmon_Pink = "E4AA8A"
-    Sunset_Orange = "B75C2D"
-    Mesa_Red = "7D3906"
-    Bark_Brown = "6A4B37"
-    Chocolate_Brown = "6E3D24"
-    Russet_Brown = "4F2D1F"
-    Kobold_Brown = "30211B"
-    Cork_Brown = "C99156"
-    Qiqirn_Brown = "996E3F"
-    Opo_opo_Brown = "7B5C2D"
-    Aldgoat_Brown = "A2875C"
-    Pumpkin_Orange = "C57424"
-    Acorn_Brown = "8E581B"
-    Orchard_Brown = "644216"
-    Chestnut_Brown = "3D290D"
-    Gobbiebag_Brown = "B9A489"
-    Shale_Brown = "92816C"
-    Mole_Brown = "615245"
-    Loam_Brown = "3F3329"
-    Bone_White = "EBD3A0"
-    Ul_Brown = "B7A370"
-    Desert_Yellow = "DBB457"
-    Honey_Yellow = "FAC62B"
-    Millioncorn_Yellow = "E49E34"
-    Coeurl_Yellow = "BC8804"
-    Cream_Yellow = "F2D770"
-    Halatali_Yellow = "A58430"
-    Raisin_Brown = "403311"
-    Mud_Green = "585230"
-    Sylph_Green = "BBBB8A"
-    Lime_Green = "ABB054"
-    Moss_Green = "707326"
-    Meadow_Green = "8B9C63"
-    Olive_Green = "4B5232"
-    Marsh_Green = "323621"
-    Apple_Green = "9BB363"
-    Cactuar_Green = "658241"
-    Hunter_Green = "284B2C"
-    Ochu_Green = "406339"
-    Adamantoise_Green = "5F7558"
-    Nophica_Green = "3B4D3C"
-    Deepwood_Green = "1E2A21"
-    Celeste_Green = "96BDB9"
-    Turquoise_Green = "437272"
-    Morbol_Green = "1F4646"
-    Ice_Blue = "B2C4CE"
-    Sky_Blue = "83B0D2"
-    Seafog_Blue = "6481A0"
-    Peacock_Blue = "3B6886"
-    Rhotano_Blue = "1C3D54"
-    Corpse_Blue = "8E9BAC"
-    Ceruleum_Blue = "4F5766"
-    Woad_Blue = "2F3851"
-    Ink_Blue = "1A1F27"
-    Raptor_Blue = "5B7FC0"
-    Othard_Blue = "2F5889"
-    Storm_Blue = "234172"
-    Void_Blue = "112944"
-    Royal_Blue = "273067"
-    Midnight_Blue = "181937"
-    Shadow_Blue = "373747"
-    Abyssal_Blue = "312D57"
-    Lavender_Purple = "877FAE"
-    Gloom_Purple = "514560"
-    Currant_Purple = "322C3B"
-    Iris_Purple = "B79EBC"
-    Grape_Purple = "3B2A3D"
-    Lotus_Pink = "FECEF5"
-    Colibri_Pink = "DC9BCA"
-    Plum_Purple = "79526C"
-    Regal_Purple = "66304E"
-    Ruby_Red = "E40011"
-    Cherry_Pink = "F5379B"
-    Canary_Yellow = "FEF864"
-    Vanilla_Yellow = "FBF1B4"
-    Dragoon_Blue = "000EA2"
-    Turquoise_Blue = "04AFCD"
-    Violet_Purple = "A798C5"
-    Azure_Blue = "8394C6"
-    Neon_Green = "DBFB47"
-    Carmine_Red = "F03B53"
-    Neon_Pink = "F749C5"
-    Bright_Orange = "FA9849"
-    Neon_Yellow = "F0F632"
-    Pure_White = "F9F8F4"
-    Jet_Black = "1E1E1E"
-    Pastel_Pink = "FDC8C6"
-    Dark_Red = "321919"
-    Dark_Brown = "28211C"
-    Pastel_Green = "BACFAA"
-    Dark_Green = "152C2C"
-    Pastel_Blue = "96A4D9"
-    Dark_Blue = "121F2D"
-    Pastel_Purple = "BBB5DA"
-    Dark_Purple = "232026"
+    snow_white = "e4dfd0"
+    ash_grey = "aca8a2"
+    goobbue_grey = "898784"
+    slate_grey = "656565"
+    charcoal_grey = "484742"
+    soot_black = "2b2923"
+    rose_pink = "e69f96"
+    lilac_purple = "836969"
+    rolanberry_red = "5b1729"
+    dalamud_red = "781a1a"
+    rust_red = "622207"
+    wine_red = "451511"
+    coral_pink = "cc6c5e"
+    blood_red = "913b27"
+    salmon_pink = "e4aa8a"
+    sunset_orange = "b75c2d"
+    mesa_red = "7d3906"
+    bark_brown = "6a4b37"
+    chocolate_brown = "6e3d24"
+    russet_brown = "4f2d1f"
+    kobold_brown = "30211b"
+    cork_brown = "c99156"
+    qiqirn_brown = "996e3f"
+    opo_opo_brown = "7b5c2d"
+    aldgoat_brown = "a2875c"
+    pumpkin_orange = "c57424"
+    acorn_brown = "8e581b"
+    orchard_brown = "644216"
+    chestnut_brown = "3d290d"
+    gobbiebag_brown = "b9a489"
+    shale_brown = "92816c"
+    mole_brown = "615245"
+    loam_brown = "3f3329"
+    bone_white = "ebd3a0"
+    ul_brown = "b7a370"
+    desert_yellow = "dbb457"
+    honey_yellow = "fac62b"
+    millioncorn_yellow = "e49e34"
+    coeurl_yellow = "bc8804"
+    cream_yellow = "f2d770"
+    halatali_yellow = "a58430"
+    raisin_brown = "403311"
+    mud_green = "585230"
+    sylph_green = "bbbb8a"
+    lime_green = "abb054"
+    moss_green = "707326"
+    meadow_green = "8b9c63"
+    olive_green = "4b5232"
+    marsh_green = "323621"
+    apple_green = "9bb363"
+    cactuar_green = "658241"
+    hunter_green = "284b2c"
+    ochu_green = "406339"
+    adamantoise_green = "5f7558"
+    nophica_green = "3b4d3c"
+    deepwood_green = "1e2a21"
+    celeste_green = "96bdb9"
+    turquoise_green = "437272"
+    morbol_green = "1f4646"
+    ice_blue = "b2c4ce"
+    sky_blue = "83b0d2"
+    seafog_blue = "6481a0"
+    peacock_blue = "3b6886"
+    rhotano_blue = "1c3d54"
+    corpse_blue = "8e9bac"
+    ceruleum_blue = "4f5766"
+    woad_blue = "2f3851"
+    ink_blue = "1a1f27"
+    raptor_blue = "5b7fc0"
+    othard_blue = "2f5889"
+    storm_blue = "234172"
+    void_blue = "112944"
+    royal_blue = "273067"
+    midnight_blue = "181937"
+    shadow_blue = "373747"
+    abyssal_blue = "312d57"
+    lavender_purple = "877fae"
+    gloom_purple = "514560"
+    currant_purple = "322c3b"
+    iris_purple = "b79ebc"
+    grape_purple = "3b2a3d"
+    lotus_pink = "fecef5"
+    colibri_pink = "dc9bca"
+    plum_purple = "79526c"
+    regal_purple = "66304e"
+    ruby_red = "e40011"
+    cherry_pink = "f5379b"
+    canary_yellow = "fef864"
+    vanilla_yellow = "fbf1b4"
+    dragoon_blue = "000ea2"
+    turquoise_blue = "04afcd"
+    violet_purple = "a798c5"
+    azure_blue = "8394c6"
+    neon_green = "dbfb47"
+    carmine_red = "f03b53"
+    neon_pink = "f749c5"
+    bright_orange = "fa9849"
+    neon_yellow = "f0f632"
+    pure_white = "f9f8f4"
+    jet_black = "1e1e1e"
+    pastel_pink = "fdc8c6"
+    dark_red = "321919"
+    dark_brown = "28211c"
+    pastel_green = "bacfaa"
+    dark_green = "152c2c"
+    pastel_blue = "96a4d9"
+    dark_blue = "121f2d"
+    pastel_purple = "bbb5da"
+    dark_purple = "232026"
 
     @staticmethod
     def to_hex(dye: ColourRefLit) -> ColorRef:
@@ -159,12 +159,15 @@ class ColorRef(Enum):
             If the `dye` parameter doesn't exist.
 
         """
-        res = ColorRef.__dict__.get(dye, None)
+        res = ColorRef.__dict__.get(dye.lower(), None)
         if res is None:
             msg = "The Dye specified was not found. | Dye: %s"
             raise LookupError(msg, dye)
         return res
 
+    @property
+    def name(self) -> str:
+        return super().name.replace("_", " ")
 
 ColourRefLit = Literal[
     "Snow_White",
@@ -282,3 +285,47 @@ ColourRefLit = Literal[
     "Pearl_White",
     "Metallic_Brass",
 ]
+
+
+
+class InventoryLocation(IntEnum):
+    """Enum for specifying Item Location in relation to the in game world.
+
+    Parameters
+    ----------
+        NULL = 0 |
+        BAG = 1 |
+        MARKET = 2 |
+        PREMIUM_SADDLEBAG_LEFT = 3 |
+        PREMIUM_SADDLEBAG_RIGHT = 4 |
+        SADDLEBAG_LEFT = 5 |
+        SADDLEBAG_RIGHT = 6 |
+        FREE_COMPANY = 7 |
+        GLAMOUR_CHEST = 8 |
+        ARMORY = 9 |
+        EQUIPPED = 10 | This is from Allagon Tools Inventory exports
+        CRYSTALS = 11 |
+        CURRENCY = 12 |
+        ARMOIRE = 13 | This is from Allagon Tools Inventory exports
+        HOUSING = 99 | Items from Housing plots.
+
+    """
+
+    NULL = 0
+    BAG = 1
+    MARKET = 2
+    PREMIUM_SADDLEBAG_LEFT = 3
+    PREMIUM_SADDLEBAG_RIGHT = 4
+    SADDLEBAG_LEFT = 5
+    SADDLEBAG_RIGHT = 6
+    FREE_COMPANY = 7
+    GLAMOUR_CHEST = 8
+    ARMORY = 9
+    EQUIPPED_GEAR = 10
+    CRYSTALS = 11
+    CURRENCY = 12
+    ARMOIRE = 13
+    HOUSING_INTERIOR_PLACED = 90
+    HOUSING_INTERIOR_STORED = 91
+    HOUSING_EXTERIOR_PLACED = 92
+    HOUSING_EXTERIOR_STORED = 93

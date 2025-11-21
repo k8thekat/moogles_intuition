@@ -493,14 +493,7 @@ class GetItemParams(TypedDict, total=False):
     limit_results: int
 
 
-class AllagonToolsInventoryCSV(TypedDict):
-    favourite: bool
-    icon: NotRequired[str]
-    name: str
-    type: str
-    total_quantity_available: int
-    source: str
-    inventory_location: str
+
 
 
 class SpearFishingItemData(TypedDict):

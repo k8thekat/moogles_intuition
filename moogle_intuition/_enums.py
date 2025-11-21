@@ -30,7 +30,6 @@ __all__ = (
     "Expansion",
     "FishingSpotCategory",
     "GrandCompany",
-    "InventoryLocation",
     "ItemSeries",
     "ItemSpecialBonus",
     "ItemUICategory",
@@ -38,27 +37,27 @@ __all__ = (
 
 
 class CraftType(Enum):
-    Carpenter = 0
-    Blacksmith = 1
-    Armorer = 2
-    Goldsmith = 3
-    Leatherworker = 4
-    Weaver = 5
-    Alchemist = 6
-    Culinarian = 7
+    carpenter = 0
+    blacksmith = 1
+    armorer = 2
+    goldsmith = 3
+    leatherworker = 4
+    weaver = 5
+    alchemist = 6
+    culinarian = 7
 
     def to_abbr(self, name: Optional[str] = None) -> str:
         """Converters the `name` attribute into it's abbreviated form.
 
         ```_mapping: dict[str, str] = {
-            "Carpenter": "CRP",
-            "Blacksmith": "BSM",
-            "Armorer": "ARM",
-            "Goldsmith": "GSM",
-            "Leatherworker": "LTW",
-            "Weaver": "WVR",
-            "Alchemist": "ALC",
-            "Culinarian": "CUL",
+            "carpenter": "CRP",
+            "blacksmith": "BSM",
+            "armorer": "ARM",
+            "goldsmith": "GSM",
+            "leatherworker": "LTW",
+            "weaver": "WVR",
+            "alchemist": "ALC",
+            "culinarian": "CUL",
         }
         ```
 
@@ -68,18 +67,18 @@ class CraftType(Enum):
 
         """
         _mapping: dict[str, str] = {
-            "Carpenter": "CRP",
-            "Blacksmith": "BSM",
-            "Armorer": "ARM",
-            "Goldsmith": "GSM",
-            "Leatherworker": "LTW",
-            "Weaver": "WVR",
-            "Alchemist": "ALC",
-            "Culinarian": "CUL",
+            "carpenter": "crp",
+            "blacksmith": "bsm",
+            "armorer": "arm",
+            "goldsmith": "gsm",
+            "leatherworker": "ltw",
+            "weaver": "wvr",
+            "alchemist": "alc",
+            "culinarian": "cul",
         }
         if name is not None:
-            return _mapping.get(name, "UNK")
-        return _mapping.get(self.name, "UNK")
+            return _mapping.get(name.lower(), "UNK").upper()
+        return _mapping.get(self.name.lower(), "UNK").upper()
 
 
 class Currency(IntEnum):
@@ -87,359 +86,325 @@ class Currency(IntEnum):
 
     Values:
     ---
-    Allagan_Tomestone_of_Poetics = 28
-    Serpent_Seal = 21
-    Allagan_Tomestone_of_Mathematics = 48
-    Purple_Crafters_Scrips = 33913
-    Allagan_Tomestone_of_Heliometry = 47
-    Allied_Seal = 27
-    Centurio_Seal = 10307
-    Bicolor_Gemstone = 26807
-    Skybuilders_Scrip = 28063
-    Orange_Gatherers_Scrip = 41785
-    Orange_Crafters_Scrip = 41784
-    Purple_Gatherers_Scrip = 33914
-    Gil = 0
+    allagan_tomestone_of_poetics = 28
+    serpent_seal = 21
+    allagan_tomestone_of_mathematics = 48
+    purple_crafters_scrips = 33913
+    allagan_tomestone_of_heliometry = 47
+    allied_seal = 27
+    centurio_seal = 10307
+    bicolor_gemstone = 26807
+    skybuilders_scrip = 28063
+    orange_gatherers_scrip = 41785
+    orange_crafters_scrip = 41784
+    purple_gatherers_scrip = 33914
+    gil = 0
     """
 
-    Allagan_Tomestone_of_Poetics = 28
-    Serpent_Seal = 21
-    Allagan_Tomestone_of_Mathematics = 48
-    Purple_Crafters_Scrips = 33913
-    Allagan_Tomestone_of_Heliometry = 47
-    Allied_Seal = 27
-    Centurio_Seal = 10307
-    Bicolor_Gemstone = 26807
-    Skybuilders_Scrip = 28063
-    Orange_Gatherers_Scrip = 41785
-    Orange_Crafters_Scrip = 41784
-    Purple_Gatherers_Scrip = 33914
-    Gil = 0
+    allagan_tomestone_of_poetics = 28
+    serpent_seal = 21
+    allagan_tomestone_of_mathematics = 48
+    purple_crafters_scrips = 33913
+    allagan_tomestone_of_heliometry = 47
+    allied_seal = 27
+    centurio_seal = 10307
+    bicolor_gemstone = 26807
+    skybuilders_scrip = 28063
+    orange_gatherers_scrip = 41785
+    orange_crafters_scrip = 41784
+    purple_gatherers_scrip = 33914
+    gil = 0
+
+    @property
+    def name(self) -> str:
+        return super().name.replace("_", " ")
 
 
 class EquipSlotCategory(Enum):
-    UNK = 0
-    MainHand = 1
-    OffHand = 2
-    Head = 3
-    Body = 4
-    Gloves = 5
-    Waist = 6
-    Legs = 7
-    Feet = 8
-    Ears = 9
-    Neck = 10
-    Wrists = 11
-    Finger = 12
-    MainHand_Only = 13
-    Both_Hands = 14
-    SoulCrystal = 17
-    Legs_No_Feet = 18
-    Body_NoHead_NoGloves_NoLegs_NoFeet = 19
-    Body_NoLegs_NoGloves = 20
-    Body_NoLegs_NoFeet = 21
-    Body_NoGloves = 22
+    unk = 0
+    mainhand = 1
+    offhand = 2
+    head = 3
+    body = 4
+    gloves = 5
+    waist = 6
+    legs = 7
+    feet = 8
+    ears = 9
+    neck = 10
+    wrists = 11
+    finger = 12
+    mainhand_only = 13
+    both_hands = 14
+    soulcrystal = 17
+    legs_no_feet = 18
+    body_nohead_nogloves_nolegs_nofeet = 19
+    body_nolegs_nogloves = 20
+    body_nolegs_nofeet = 21
+    body_nogloves = 22
 
 
 class FishingSpotCategory(Enum):
-    UNK = 0
-    Ocean = 1
-    Freshwater = 2
-    Dunefishing = 3
-    Skyfishing = 4
-    Cloudfishing = 5
-    Hellfishing = 6
-    Aetherfishing = 7
-    Saltfishing = 8
-    Starfishing = 9
+    unk = 0
+    ocean = 1
+    freshwater = 2
+    dunefishing = 3
+    skyfishing = 4
+    cloudfishing = 5
+    hellfishing = 6
+    aetherfishing = 7
+    saltfishing = 8
+    starfishing = 9
 
 
 class GrandCompany(Enum):
-    Maelstorm = 1
-    Order_of_the_Twin_Adder = 2
-    Immortal_Flames = 3
+    maelstorm = 1
+    order_of_the_twin_adder = 2
+    immortal_flames = 3
 
-
-class InventoryLocation(IntEnum):
-    """Enum for specifying Item Location in relation to the in game world.
-
-    Parameters
-    ----------
-        NULL = 0 |
-        BAG = 1 |
-        MARKET = 2 |
-        PREMIUM_SADDLEBAG_LEFT = 3 |
-        PREMIUM_SADDLEBAG_RIGHT = 4 |
-        SADDLEBAG_LEFT = 5 |
-        SADDLEBAG_RIGHT = 6 |
-        FREE_COMPANY = 7 |
-        GLAMOUR_CHEST = 8 |
-        ARMORY = 9 |
-        EQUIPPED = 10 | This is from Allagon Tools Inventory exports
-        CRYSTALS = 11 |
-        CURRENCY = 12 |
-        ARMOIRE = 13 | This is from Allagon Tools Inventory exports
-        HOUSING = 99 | Items from Housing plots.
-
-    """
-
-    null = 0
-    bag = 1
-    market = 2
-    premium_saddlebag_left = 3
-    premium_saddlebag_right = 4
-    saddlebag_left = 5
-    saddlebag_right = 6
-    free_company = 7
-    glamour_chest = 8
-    armory = 9
-    equipped_gear = 10
-    crystals = 11
-    currency = 12
-    armoire = 13
-    housing_interior_placed = 90
-    housing_interior_stored = 91
-    housing_exterior_placed = 92
-    housing_exterior_stored = 93
+    @property
+    def name(self) -> str:
+        return super().name.replace("_", " ")
 
 
 class ItemSeries(Enum):
-    Pugilists_Arm = 1
-    Gladiators_Arm = 2
-    Marauders_Arm = 3
-    Archers_Arm = 4
-    Lancers_Arm = 5
-    One_handed_Thaumaturges_Arm = 6
-    Two_handed_Thaumaturges_Arm = 7
-    One_handed_Conjurers_Arm = 8
-    Two_handed_Conjurers_Arm = 9
-    Arcanists_Grimoire = 10
-    Shield = 11
-    Carpenters_Primary_Tool = 12
-    Carpenters_Secondary_Tool = 13
-    Blacksmiths_Primary_Tool = 14
-    Blacksmiths_Secondary_Tool = 15
-    Armorers_Primary_Tool = 16
-    Armorers_Secondary_Tool = 17
-    Goldsmiths_Primary_Tool = 18
-    Goldsmiths_Secondary_Tool = 19
-    Leatherworkers_Primary_Tool = 20
-    Leatherworkers_Secondary_Tool = 21
-    Weavers_Primary_Tool = 22
-    Weavers_Secondary_Tool = 23
-    Alchemists_Primary_Tool = 24
-    Alchemists_Secondary_Tool = 25
-    Culinarians_Primary_Tool = 26
-    Culinarians_Secondary_Tool = 27
-    Miners_Primary_Tool = 28
-    Miners_Secondary_Tool = 29
-    Botanists_Primary_Tool = 30
-    Botanists_Secondary_Tool = 31
-    Fishers_Primary_Tool = 32
-    Fishing_Tackle = 33
-    Head = 34
-    Body = 35
-    Legs = 36
-    Hands = 37
-    Feet = 38
-    Unobtainable = 39
-    Necklace = 40
-    Earrings = 41
-    Bracelets = 42
-    Ring = 43
-    Medicine = 44
-    Ingredient = 45
-    Meal = 46
-    Seafood = 47
-    Stone = 48
-    Metal = 49
-    Lumber = 50
-    Cloth = 51
-    Leather = 52
-    Bone = 53
-    Reagent = 54
-    Dye = 55
-    Part = 56
-    Furnishing = 57
-    Materia = 58
-    Crystal = 59
-    Catalyst = 60
-    Miscellany = 61
-    Soul_Crystal = 62
-    Other = 63
-    Construction_Permit = 64
-    Roof = 65
-    Exterior_Wall = 66
-    Window = 67
-    Door = 68
-    Roof_Decoration = 69
-    Exterior_Wall_Decoration = 70
-    Placard = 71
-    Fence = 72
-    Interior_Wall = 73
-    Flooring = 74
-    Ceiling_Light = 75
-    Outdoor_Furnishing = 76
-    Table = 77
-    Tabletop = 78
-    Wall_mounted = 79
-    Rug = 80
-    Minion = 81
-    Gardening = 82
-    Demimateria = 83
-    Rogues_Arm = 84
-    Seasonal_Miscellany = 85
-    Triple_Triad_Card = 86
-    Dark_Knights_Arm = 87
-    Machinists_Arm = 88
-    Astrologians_Arm = 89
-    Airship_Hull = 90
-    Airship_Rigging = 91
-    Airship_Aftcastle = 92
-    Airship_Forecastle = 93
-    Orchestrion_Roll = 94
-    Painting = 95
-    Samurais_Arm = 96
-    Red_Mages_Arm = 97
-    Scholars_Arm = 98
-    Fishers_Secondary_Tool = 99
-    Currency = 100
-    Submersible_Hull = 101
-    Submersible_Stern = 102
-    Submersible_Bow = 103
-    Submersible_Bridge = 104
-    Blue_Mages_Arm = 105
-    Gunbreakers_Arm = 106
-    Dancers_Arm = 107
-    Reapers_Arm = 108
-    Sages_Arm = 109
-    Vipers_Arm = 110
-    Pictomancers_Arm = 111
-    Outfits = 112
+    pugilists_arm = 1
+    gladiators_arm = 2
+    marauders_arm = 3
+    archers_arm = 4
+    lancers_arm = 5
+    one_handed_thaumaturges_arm = 6
+    two_handed_thaumaturges_arm = 7
+    one_handed_conjurers_arm = 8
+    two_handed_conjurers_arm = 9
+    arcanists_grimoire = 10
+    shield = 11
+    carpenters_primary_tool = 12
+    carpenters_secondary_tool = 13
+    blacksmiths_primary_tool = 14
+    blacksmiths_secondary_tool = 15
+    armorers_primary_tool = 16
+    armorers_secondary_tool = 17
+    goldsmiths_primary_tool = 18
+    goldsmiths_secondary_tool = 19
+    leatherworkers_primary_tool = 20
+    leatherworkers_secondary_tool = 21
+    weavers_primary_tool = 22
+    weavers_secondary_tool = 23
+    alchemists_primary_tool = 24
+    alchemists_secondary_tool = 25
+    culinarians_primary_tool = 26
+    culinarians_secondary_tool = 27
+    miners_primary_tool = 28
+    miners_secondary_tool = 29
+    botanists_primary_tool = 30
+    botanists_secondary_tool = 31
+    fishers_primary_tool = 32
+    fishing_tackle = 33
+    head = 34
+    body = 35
+    legs = 36
+    hands = 37
+    feet = 38
+    unobtainable = 39
+    necklace = 40
+    earrings = 41
+    bracelets = 42
+    ring = 43
+    medicine = 44
+    ingredient = 45
+    meal = 46
+    seafood = 47
+    stone = 48
+    metal = 49
+    lumber = 50
+    cloth = 51
+    leather = 52
+    bone = 53
+    reagent = 54
+    dye = 55
+    part = 56
+    furnishing = 57
+    materia = 58
+    crystal = 59
+    catalyst = 60
+    miscellany = 61
+    soul_crystal = 62
+    other = 63
+    construction_permit = 64
+    roof = 65
+    exterior_wall = 66
+    window = 67
+    door = 68
+    roof_decoration = 69
+    exterior_wall_decoration = 70
+    placard = 71
+    fence = 72
+    interior_wall = 73
+    flooring = 74
+    ceiling_light = 75
+    outdoor_furnishing = 76
+    table = 77
+    tabletop = 78
+    wall_mounted = 79
+    rug = 80
+    minion = 81
+    gardening = 82
+    demimateria = 83
+    rogues_arm = 84
+    seasonal_miscellany = 85
+    triple_triad_card = 86
+    dark_knights_arm = 87
+    machinists_arm = 88
+    astrologians_arm = 89
+    airship_hull = 90
+    airship_rigging = 91
+    airship_aftcastle = 92
+    airship_forecastle = 93
+    orchestrion_roll = 94
+    painting = 95
+    samurais_arm = 96
+    red_mages_arm = 97
+    scholars_arm = 98
+    fishers_secondary_tool = 99
+    currency = 100
+    submersible_hull = 101
+    submersible_stern = 102
+    submersible_bow = 103
+    submersible_bridge = 104
+    blue_mages_arm = 105
+    gunbreakers_arm = 106
+    dancers_arm = 107
+    reapers_arm = 108
+    sages_arm = 109
+    vipers_arm = 110
+    pictomancers_arm = 111
+    outfits = 112
 
 
 class ItemSpecialBonus(Enum):
-    UNK = 1
-    Set_Bonus_ = 2
-    Sanction_ = 4
-    Set_Bonus_Capped_ = 6
-    Eureka_Effect_ = 7
-    Save_the_Queen_Area_Effect = 8
+    unk = 1
+    set_bonus_ = 2
+    sanction_ = 4
+    set_bonus_capped_ = 6
+    eureka_effect_ = 7
+    save_the_queen_area_effect = 8
 
 
 class ItemUICategory(Enum):
-    Pugilists_Arm = 1
-    Gladiators_Arm = 2
-    Marauders_Arm = 3
-    Archers_Arm = 4
-    Lancers_Arm = 5
-    One_handed_Thaumaturges_Arm = 6
-    Two_handed_Thaumaturges_Arm = 7
-    One_handed_Conjurers_Arm = 8
-    Two_handed_Conjurers_Arm = 9
-    Arcanists_Grimoire = 10
-    Shield = 11
-    Carpenters_Primary_Tool = 12
-    Carpenters_Secondary_Tool = 13
-    Blacksmiths_Primary_Tool = 14
-    Blacksmiths_Secondary_Tool = 15
-    Armorers_Primary_Tool = 16
-    Armorers_Secondary_Tool = 17
-    Goldsmiths_Primary_Tool = 18
-    Goldsmiths_Secondary_Tool = 19
-    Leatherworkers_Primary_Tool = 20
-    Leatherworkers_Secondary_Tool = 21
-    Weavers_Primary_Tool = 22
-    Weavers_Secondary_Tool = 23
-    Alchemists_Primary_Tool = 24
-    Alchemists_Secondary_Tool = 25
-    Culinarians_Primary_Tool = 26
-    Culinarians_Secondary_Tool = 27
-    Miners_Primary_Tool = 28
-    Miners_Secondary_Tool = 29
-    Botanists_Primary_Tool = 30
-    Botanists_Secondary_Tool = 31
-    Fishers_Primary_Tool = 32
-    Fishing_Tackle = 33
-    Head = 34
-    Body = 35
-    Legs = 36
-    Hands = 37
-    Feet = 38
-    Unobtainable = 39
-    Necklace = 40
-    Earrings = 41
-    Bracelets = 42
-    Ring = 43
-    Medicine = 44
-    Ingredient = 45
-    Meal = 46
-    Seafood = 47
-    Stone = 48
-    Metal = 49
-    Lumber = 50
-    Cloth = 51
-    Leather = 52
-    Bone = 53
-    Reagent = 54
-    Dye = 55
-    Part = 56
-    Furnishing = 57
-    Materia = 58
-    Crystal = 59
-    Catalyst = 60
-    Miscellany = 61
-    Soul_Crystal = 62
-    Other = 63
-    Construction_Permit = 64
-    Roof = 65
-    Exterior_Wall = 66
-    Window = 67
-    Door = 68
-    Roof_Decoration = 69
-    Exterior_Wall_Decoration = 70
-    Placard = 71
-    Fence = 72
-    Interior_Wall = 73
-    Flooring = 74
-    Ceiling_Light = 75
-    Outdoor_Furnishing = 76
-    Table = 77
-    Tabletop = 78
-    Wall_mounted = 79
-    Rug = 80
-    Minion = 81
-    Gardening = 82
-    Demimateria = 83
-    Rogues_Arm = 84
-    Seasonal_Miscellany = 85
-    Triple_Triad_Card = 86
-    Dark_Knights_Arm = 87
-    Machinists_Arm = 88
-    Astrologians_Arm = 89
-    Airship_Hull = 90
-    Airship_Rigging = 91
-    Airship_Aftcastle = 92
-    Airship_Forecastle = 93
-    Orchestrion_Roll = 94
-    Painting = 95
-    Samurais_Arm = 96
-    Red_Mages_Arm = 97
-    Scholars_Arm = 98
-    Fishers_Secondary_Tool = 99
-    Currency = 100
-    Submersible_Hull = 101
-    Submersible_Stern = 102
-    Submersible_Bow = 103
-    Submersible_Bridge = 104
-    Blue_Mages_Arm = 105
-    Gunbreakers_Arm = 106
-    Dancers_Arm = 107
-    Reapers_Arm = 108
-    Sages_Arm = 109
-    Vipers_Arm = 110
-    Pictomancers_Arm = 111
-    Outfits = 112
+    unkown = 0
+    pugilists_arm = 1
+    gladiators_arm = 2
+    marauders_arm = 3
+    archers_arm = 4
+    lancers_arm = 5
+    one_handed_thaumaturges_arm = 6
+    two_handed_thaumaturges_arm = 7
+    one_handed_conjurers_arm = 8
+    two_handed_conjurers_arm = 9
+    arcanists_grimoire = 10
+    shield = 11
+    carpenters_primary_tool = 12
+    carpenters_secondary_tool = 13
+    blacksmiths_primary_tool = 14
+    blacksmiths_secondary_tool = 15
+    armorers_primary_tool = 16
+    armorers_secondary_tool = 17
+    goldsmiths_primary_tool = 18
+    goldsmiths_secondary_tool = 19
+    leatherworkers_primary_tool = 20
+    leatherworkers_secondary_tool = 21
+    weavers_primary_tool = 22
+    weavers_secondary_tool = 23
+    alchemists_primary_tool = 24
+    alchemists_secondary_tool = 25
+    culinarians_primary_tool = 26
+    culinarians_secondary_tool = 27
+    miners_primary_tool = 28
+    miners_secondary_tool = 29
+    botanists_primary_tool = 30
+    botanists_secondary_tool = 31
+    fishers_primary_tool = 32
+    fishing_tackle = 33
+    head = 34
+    body = 35
+    legs = 36
+    hands = 37
+    feet = 38
+    unobtainable = 39
+    necklace = 40
+    earrings = 41
+    bracelets = 42
+    ring = 43
+    medicine = 44
+    ingredient = 45
+    meal = 46
+    seafood = 47
+    stone = 48
+    metal = 49
+    lumber = 50
+    cloth = 51
+    leather = 52
+    bone = 53
+    reagent = 54
+    dye = 55
+    part = 56
+    furnishing = 57
+    materia = 58
+    crystal = 59
+    catalyst = 60
+    miscellany = 61
+    soul_crystal = 62
+    other = 63
+    construction_permit = 64
+    roof = 65
+    exterior_wall = 66
+    window = 67
+    door = 68
+    roof_decoration = 69
+    exterior_wall_decoration = 70
+    placard = 71
+    fence = 72
+    interior_wall = 73
+    flooring = 74
+    ceiling_light = 75
+    outdoor_furnishing = 76
+    table = 77
+    tabletop = 78
+    wall_mounted = 79
+    rug = 80
+    minion = 81
+    gardening = 82
+    demimateria = 83
+    rogues_arm = 84
+    seasonal_miscellany = 85
+    triple_triad_card = 86
+    dark_knights_arm = 87
+    machinists_arm = 88
+    astrologians_arm = 89
+    airship_hull = 90
+    airship_rigging = 91
+    airship_aftcastle = 92
+    airship_forecastle = 93
+    orchestrion_roll = 94
+    painting = 95
+    samurais_arm = 96
+    red_mages_arm = 97
+    scholars_arm = 98
+    fishers_secondary_tool = 99
+    currency = 100
+    submersible_hull = 101
+    submersible_stern = 102
+    submersible_bow = 103
+    submersible_bridge = 104
+    blue_mages_arm = 105
+    gunbreakers_arm = 106
+    dancers_arm = 107
+    reapers_arm = 108
+    sages_arm = 109
+    vipers_arm = 110
+    pictomancers_arm = 111
+    outfits = 112
 
 
 class Expansion(Enum):
@@ -456,13 +421,17 @@ class Expansion(Enum):
 
     """
 
-    A_Realm_Reborn = 2
-    Heavensward = 3
-    Stormblood = 4
-    Shadowbringers = 5
-    Endwalker = 6
-    Dawntrail = 7
+    a_realm_reborn = 2
+    heavensward = 3
+    stormblood = 4
+    shadowbringers = 5
+    endwalker = 6
+    dawntrail = 7
 
+
+    @property
+    def name(self) -> str:
+        return super().name.replace("_", " ")
     # @staticmethod
     # def resolve_patch(value: float) -> Expansion:
     #     """Resolve a float patch value into an :class:`Expansion` object.

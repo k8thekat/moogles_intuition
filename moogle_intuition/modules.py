@@ -33,7 +33,7 @@ from aiohttp_client_cache.session import CachedSession
 from async_garlandtools import GarlandToolsAsync, IconType, Object as GTObject
 from async_garlandtools._types import Item as GTItem, ItemResponse, PartialTypeIDObj
 from async_garlandtools.errors import GarlandToolsKeyError, GarlandToolsRequestError
-from async_universalis import CurrentData, CurrentDataEntries, DataCenter, HistoryData, ItemQuality, MultiPart, UniversalisAPI, World
+from async_universalis import CurrentData, CurrentDataEntries, DataCenter, HistoryData, MultiPart, UniversalisAPI, World
 from async_universalis.errors import UniversalisError
 from thefuzz import fuzz  # type: ignore[reportMissingStubFile]
 
@@ -41,7 +41,7 @@ from moogle_intuition._types import CurrencySpender, Vendor
 from moogle_intuition.errors import MoogleLookupError
 from moogle_intuition.ff14angler._types import FishingData
 
-from ._enums import CraftType, Currency, EquipSlotCategory, Expansion, FishingSpotCategory, InventoryLocation
+from ._enums import CraftType, Currency, EquipSlotCategory, Expansion, FishingSpotCategory, ItemUICategory
 from .ff14angler import Angler, AnglerBaits, AnglerFish
 
 if TYPE_CHECKING:
@@ -59,7 +59,6 @@ if TYPE_CHECKING:
     T = ParamSpec("T")
     F = TypeVar("F")
     from ._types import (
-        AllagonToolsInventoryCSV,
         CSVParseParams,
         CurMarketBoardParams,
         CurrencySpender,
@@ -259,7 +258,7 @@ DATA_URLS: dict[str, tuple[str, str]] = {
 class Object:
     """Our Base object class for FFXIV related object handling."""
 
-    _raw: DataTypeAliases | AllagonToolsInventoryCSV
+    _raw: DataTypeAliases
     _repr_keys: list[str]
     _moogle: Moogle
     # _universalis: Optional[UniversalisAPI]
@@ -277,7 +276,7 @@ class Object:
         8: 33916,
     }
 
-    def __init__(self, data: DataTypeAliases | AllagonToolsInventoryCSV, *, moogle: Moogle) -> None:
+    def __init__(self, data: DataTypeAliases, *, moogle: Moogle) -> None:
         """Handles setting our `_raw` attribute and setting our `Moogle` class.
 
         Parameters
@@ -313,6 +312,54 @@ class Object:
             return f"\n\n__{self.__class__.__name__}__\n" + "\n".join([
                 f"{e}: {getattr(self, e)}" for e in sorted(self.__dict__) if e.startswith("_") is False
             ])
+
+
+class Generic:
+    """A Generic object to house attributes and data that `<Moogle>` and `<Builder>` will share and populate."""
+
+    _session: Optional[aiohttp.ClientSession | CachedSession]
+    session: Optional[aiohttp.ClientSession | CachedSession]
+
+    # Item Handling.
+    _items: dict[str, DataTypeAliases]
+    "Structure -> `item_id[int]` : `item_data`"
+    _items_ref: dict[str | int, str | int]
+    "Useful for Item Name -> Item ID lookups.  `item_name[str]` : `item_id[int]`"
+
+    # Recipe Handling.
+    _recipes: dict[str, DataTypeAliases]
+    _recipes_ref: dict[str | int, str | int]
+    "Useful for Recipe ID -> Item Result lookups. `recipe_id[str]` : `item_result[int]`"
+
+    # Job Recipe Table
+    _recipe_lookups: dict[str, DataTypeAliases]
+
+    # Recipe Level Table
+    _recipe_levels: dict[str, DataTypeAliases]
+
+    # Gatherable Items Handling.
+    _gathering_items: dict[str, DataTypeAliases]
+    # Using flipped keys in the item_dict for faster lookup of an item.
+    _gathering_items_ref: dict[str | int, str | int]
+    "Useful for Gathering ID -> Item ID lookups. `gathering_id[str]` : `item_id[int]`"
+    _gathering_item_levels: dict[str, DataTypeAliases]
+
+    # Fishing Related
+    _fish_params: dict[str, DataTypeAliases]
+    # This is stored with FLIPPED key to values ("Item ID" : "Dict Index")
+    _fish_params_ref: dict[str | int, str | int]
+    "Useful for Item ID -> Fishing Info ID. `item_id[int]` : `fish_parameter_id[str]`"
+    _fishing_spot: dict[str, DataTypeAliases]
+
+    # Spearfishing Related
+    _spearfishing_items: dict[str, DataTypeAliases]
+    # This is stored with FLIPPED key to values ("item id" : "Dict Index")
+    _spearfishing_items_ref: dict[str | int, str | int]
+    "Useful for Item ID -> SpearFishing Info ID. `item_id[int]` : `spearfishing_item_id[str]`"
+    _spearfishing_notebook: dict[str, DataTypeAliases]
+
+    # Location Information
+    _place_names: dict[str, DataTypeAliases]
 
     def teamcraft_list(self, items: Optional[list[Item]] = None) -> Optional[str]:
         """Create a Teamcraft Import URL from a list of :class:`Item` or if called from a :class:`Item` object will use `Self`.
@@ -376,55 +423,6 @@ class Object:
         encoded = base64.b64encode(payload.encode("utf-8"))
         LOGGER.debug("<%s.teamcraft_list> | Encoding: %s | Encoded: %s", __class__.__name__, "utf-8", encoded)
         return f"{base_url}{encoded.decode('utf-8')}"
-
-class Generic:
-    """A Generic object to house attributes and data that `<Moogle>` and `<Builder>` will share and populate."""
-
-    _session: Optional[aiohttp.ClientSession | CachedSession]
-    session: Optional[aiohttp.ClientSession | CachedSession]
-
-    # Item Handling.
-    _items: dict[str, DataTypeAliases]
-    "Structure -> `item_id[int]` : `item_data`"
-    _items_ref: dict[str | int, str | int]
-    "Useful for Item Name -> Item ID lookups.  `item_name[str]` : `item_id[int]`"
-
-    # Recipe Handling.
-    _recipes: dict[str, DataTypeAliases]
-    _recipes_ref: dict[str | int, str | int]
-    "Useful for Recipe ID -> Item Result lookups. `recipe_id[str]` : `item_result[int]`"
-
-    # Job Recipe Table
-    _recipe_lookups: dict[str, DataTypeAliases]
-
-    # Recipe Level Table
-    _recipe_levels: dict[str, DataTypeAliases]
-
-    # Gatherable Items Handling.
-    _gathering_items: dict[str, DataTypeAliases]
-    # Using flipped keys in the item_dict for faster lookup of an item.
-    _gathering_items_ref: dict[str | int, str | int]
-    "Useful for Gathering ID -> Item ID lookups. `gathering_id[str]` : `item_id[int]`"
-    _gathering_item_levels: dict[str, DataTypeAliases]
-
-    # Fishing Related
-    _fish_params: dict[str, DataTypeAliases]
-    # This is stored with FLIPPED key to values ("Item ID" : "Dict Index")
-    _fish_params_ref: dict[str | int, str | int]
-    "Useful for Item ID -> Fishing Info ID. `item_id[int]` : `fish_parameter_id[str]`"
-    _fishing_spot: dict[str, DataTypeAliases]
-
-    # Spearfishing Related
-    _spearfishing_items: dict[str, DataTypeAliases]
-    # This is stored with FLIPPED key to values ("item id" : "Dict Index")
-    _spearfishing_items_ref: dict[str | int, str | int]
-    "Useful for Item ID -> SpearFishing Info ID. `item_id[int]` : `spearfishing_item_id[str]`"
-    _spearfishing_notebook: dict[str, DataTypeAliases]
-
-    # Location Information
-    _place_names: dict[str, DataTypeAliases]
-
-
 
 
 class Builder(Generic):
@@ -1849,8 +1847,8 @@ class Moogle(Generic):
 
     async def currency_spender(
         self,
-        currency: Currency = Currency.Allagan_Tomestone_of_Poetics,
-        patch: Expansion = Expansion.Dawntrail,
+        currency: Currency = Currency.allagan_tomestone_of_poetics,
+        patch: Expansion = Expansion.dawntrail,
         **kwargs: Unpack[CurMarketBoardParams],
     ) -> dict[int, CurrencySpender] | None:
         """Returns a list of items with the highest sale velocity per World/Datacenter purchased with the specified currency.
@@ -1864,9 +1862,9 @@ class Moogle(Generic):
         Parameters
         ----------
         currency: :class:`Currency`, optional
-            The currency to look up for potential spending, by default :class:`Currency.Allagan_Tomestone_of_Poetics`.
+            The currency to look up for potential spending, by default :class:`Currency.allagan_tomestone_of_poetics`.
         patch: :class:`Patch`, optional
-            The patch at which to filter results "up to", so :class:`Patch.Dawntrail`
+            The patch at which to filter results "up to", so :class:`Patch.dawntrail`
         **kwargs: :class:`Unpack[CurMarketBoardParams]`
             Any additional params to pass to :class:`UniversalisAPI.get_bulk_current_data()`.
 
@@ -1924,7 +1922,7 @@ class Item(Object):
         The name of the Final Fantasy 14 item.
     level_item: :class:`ItemLevelData`
         The attributes and other characteristics related to the item such as HP, MP and damage.
-    equip_slot_category: :class:`Optional[EquipSlotCategory]`
+    equip_slot_category: :class:`EquipSlotCategory`
         The equipment slot the item belongs to, if applicable.
     stack_size: :class:`int`
         The max stack size of the item.
@@ -1934,6 +1932,8 @@ class Item(Object):
         If the item is un-tradeable or not.
     is_indisposable: :class:`bool`
         If the item is in-disposable or not.
+    item_ui_category: :class:`ItemUICategory`
+        The UI slot this item belongs to.
     can_be_hq: :class:`int`
         If the item can be high-quality or not.
     dye_count: :obj:`int`
@@ -1990,11 +1990,12 @@ class Item(Object):
     description: Optional[str]
     name: str
     level_item: ItemLevelData
-    equip_slot_category: Optional[EquipSlotCategory]
+    equip_slot_category: EquipSlotCategory
     stack_size: int
     is_unique: bool
     is_untradable: bool
     is_indisposable: bool
+    item_ui_category: ItemUICategory
     can_be_hq: int
     dye_count: int
     is_collectable: bool
@@ -2017,6 +2018,7 @@ class Item(Object):
         "is_indisposable",
         "is_unique",
         "is_untradable",
+        "item_ui_category",
         "level_item",
         "materia_slot_count",
         "name",
@@ -2056,7 +2058,19 @@ class Item(Object):
                         "EquipSlotCategory",
                         value,
                     )
-                    self.equip_slot_category = None
+                    self.equip_slot_category = EquipSlotCategory.unk
+
+            if key == "item_ui_category" and isinstance(value, int):
+                try:
+                    self.item_ui_category = ItemUICategory(value=value)
+                except ValueError:
+                    LOGGER.warning(
+                        "<%s> | Failed to find value in %s. | value: %s ",
+                        __class__.__name__,
+                        "ItemUICategory",
+                        value,
+                    )
+                    self.item_ui_category = ItemUICategory.unkown
 
             else:
                 setattr(self, key, value)
@@ -2587,7 +2601,6 @@ class JobRecipe(Object):
     def __iter__(self) -> Iterator[Recipe]:
         _iter = 0
         while _iter < len(self.__slots__):
-            print("iteration", _iter)
             try:
                 attr = self.__slots__[_iter]
                 data = getattr(self, attr)
@@ -2992,7 +3005,7 @@ class Fish(Object):
     _angler: Angler
 
     def __init__(self, data: DataTypeAliases, angler: Angler, moogle: Moogle) -> None:
-        """Generic object for bridging FF14Angler and Moogle.
+        """Generic object for bridging FF14Angler and XIV data.
 
         Parameters
         ----------
@@ -3029,7 +3042,7 @@ class Fish(Object):
         """Retrieve FF14 Fishing Angler data from their website and return it in a manageable form.
 
         .. note:
-            - This will populate the `<ItemFish.ff14angler_data>` property.
+            - This will populate the :class:`Self.angler_data` property.
 
 
         Parameters
@@ -3104,7 +3117,7 @@ class Fish(Object):
 
     @property
     def angler_data(self) -> Optional[list[AnglerFish]]:
-        """Houses the FF14Angler information retrieved from `<ItemFish.get_ff14angler_data>`."""
+        """Houses the FF14Angler information retrieved from :class:`Self.get_angler_data()`."""
         try:
             return self._angler_data
         except AttributeError:
@@ -3119,7 +3132,7 @@ class Fish(Object):
 
 
 class Fishing(Fish):
-    """Represents an Final Fantasy 14 Fish Item.
+    """Represents the data for a Final Fantasy 14 Fish related to :class:`Item`.
 
     .. note::
         Inherits attributes from :class:`Fish`.
@@ -3139,23 +3152,25 @@ class Fishing(Fish):
         The number of stars.
     is_hidden: :class:`bool`
         If the location is hidden or not.
-    fishing_spot: :class:`FishingSpot`
-        The fishing spot the fish belongs to.
+
 
     Properties
     -----------
     angler_data: :class:`Optional[list[AnglerFish]]`
-        Houses the FF14Angler information retrieved from `<ItemFish.get_angler_data>`.
+        Houses the FF14Angler data retrieved by :class:`Self.get_angler_data()`.
     angler_url: :class:`str`
         The FF14Angler website url for the Fish.
+    fishing_spot: :class:`Optional[FishingSpot]`, optional
+        The fishing spot the fish belongs to, if applicable.
 
     """
 
     text: Optional[str]
+    "Any description or text if applicable."
     ocean_stars: int
     is_hidden: bool
     fishing_spot_id: int
-    _fishing_spot: FishingSpot
+    _fishing_spot: Optional[FishingSpot]
 
     __slots__ = (
         # "fishing_spot",
@@ -3181,23 +3196,22 @@ class Fishing(Fish):
 
         """
         super().__init__(data=data, angler=angler, moogle=moogle)
-        self.item: Item = item
+
         self._repr_keys = ["text", "is_hidden", "fishing_spot", "item"]
         self.fishing_spot_id = data["fishing_spot"]
-
         for key in self.__slots__:
             value: Optional[int | bool | str] = data.get(key, None)
             if value is None:
                 continue
             if isinstance(value, int):
-                # if key == "fishing_spot" and value != 0:
-                #     self.fishing_spot_id = value
                 if key == "is_hidden":
                     setattr(self, key, bool(value))
                 else:
                     setattr(self, key, value)
             else:
                 setattr(self, key, value)
+
+        self.item: Item = item
 
     def _get_fishing_spot(self, spot_id: int) -> FishingSpot:
         LOGGER.debug(
@@ -3217,19 +3231,19 @@ class Fishing(Fish):
     def fishing_spot(self) -> Optional[FishingSpot]:
         """The fishing spot the :class:`Fishing` belongs to."""
         try:
-            self._fishing_spot: FishingSpot = self._get_fishing_spot(spot_id=self.fishing_spot_id)
+            self._fishing_spot = self._get_fishing_spot(self.fishing_spot_id)
         except MoogleLookupError:
             LOGGER.warning("<%s> | Failed to find Fishing spot id. | ID: %s", __class__.__name__, self.fishing_spot_id)
-            return None
-        else:
-            return self._fishing_spot
+            self._fishing_spot = None
+        return self._fishing_spot
+
 
 
 class SpearFishing(Fish):
     """Represents an Final Fantasy Fish that is acquired via Spear Fishing.
 
     .. note::
-        Inherits attributes from :class:`ItemFish`.
+        Inherits attributes from :class:`Fish`.
 
 
     Attributes
@@ -3250,7 +3264,7 @@ class SpearFishing(Fish):
     Properties
     -----------
     angler_data: :class:`Optional[list[AnglerFish]]`
-        Houses the FF14Angler information retrieved from `<ItemFish.get_angler_data>`.
+        Houses the FF14Angler data retrieved by :class:`Self.get_angler_data()`.
     angler_url: :class:`str`
         The FF14Angler website url for the Fish.
 
@@ -3258,7 +3272,9 @@ class SpearFishing(Fish):
     """
 
     description: str
+    "The description related to the Fish."
     territory_type: SpearFishingSpot
+    "Similar to :class:`FishingSpot` but specifically for spear fishing locations."
     is_visible: bool
 
     __slots__ = (
@@ -3273,7 +3289,7 @@ class SpearFishing(Fish):
 
         Parameters
         ----------
-        data: :class:`DataTypeAliases`
+        data: :class:`SpearFishingItemData`
             Generic typed as the data structure being passed in is typically a dict.
         item: :class:`Item`
             The Final Fantasy :class:`Item` object associated to the SpearFishing data.
@@ -3533,10 +3549,12 @@ class FishingSpot(Object):
                 continue
             if isinstance(value, int):
                 if key.startswith("item") and value != 0:
+                    # If any of our Fishing Items are the original Fish,
+                    # We set the key accordingly.
                     if value == self._item.id:
                         setattr(self, key, self._item)
-
                         continue
+
                     try:
                         temp: Item = self._moogle.get_item(item=str(value), limit_results=1)
                         setattr(self, key, temp)
@@ -3564,6 +3582,27 @@ class FishingSpot(Object):
                     setattr(self, key, value)
             else:
                 setattr(self, key, value)
+
+    def __iter__(self) -> Iterator[Item]:
+        """Yields a tuple containing :class:`Item`."""
+        _iter = 0
+        while _iter < 10:
+            try:
+                item: Optional[Item | int] = getattr(self, f"item{_iter}")
+                if isinstance(item, int) or item is None:
+                    _iter += 1
+                    continue
+
+            except IndexError:
+                raise StopIteration from IndexError
+
+            _iter += 1
+            yield item
+
+
+    def __len__(self) -> int:  # noqa: D105
+        return len([entry for entry in self])  # noqa: C416
+
 
     @property
     def angler_url(self) -> str:
@@ -3670,13 +3709,19 @@ class Gathering(Object):
             otherwise will return `None` if :class:`Item.garlandtools_data` is `None`.
 
         """
-        result: list[GatheringNode] = []
-
+        # Force re-fetching of data
         if fetch_data is True:
             await self.item.get_garlandtools_data()
 
+        # In case our data-fetching fails or we haven't fetched data at all.
         if self.item.garlandtools_data is None:
+            LOGGER.warning("<%s.%s> | GarlandTools data hasn't been fetched yet.")
             return None
+
+        # Early exit to prevent re-fetching data.
+        if fetch_data is False and self.nodes is not None:
+            return self.nodes
+
 
         nodes: list[int] | None = self.item.garlandtools_data["item"].get("nodes", None)
         if nodes is None:
@@ -3685,7 +3730,7 @@ class Gathering(Object):
         self._nodes = []
         for idx, node in enumerate(nodes):
             if idx > count:
-                return result
+                return self._nodes
             try:
                 res: NodeResponse = await self._moogle._garlandtools.node(node_id=node)
             except GarlandToolsKeyError:
@@ -3893,133 +3938,6 @@ class PlaceName(Object):
         self._repr_keys = ["name"]
         self.name = data.get("name", None)
 
-
-class InventoryItem(Item):
-    """Represents an item from a parsed Allagon Tools Inventory CSV file.
-
-    Attributes
-    ----------
-    name: :class:`str`
-        The name of the item.
-    id: :class:`int`
-        The item ID.
-    quality: :class:`ItemQuality`
-        The quality of the item, either HQ or NQ.
-    quantity: :class:`int`
-        The number of said item from the CSV data.
-    source: :class:`str`
-        Who has the item, typically a character, retainer or FC name.
-    location: :class:`InventoryLocationEnum`
-        What type of inventory the item is located, such as Bag, Saddlebag, Glamour chest...
-
-    """
-
-    name: str
-    id: int
-    quality: ItemQuality
-    quantity: int
-    source: str
-    location: InventoryLocation
-
-    _locations: ClassVar[dict[str, InventoryLocation]] = {
-        "armory": InventoryLocation.armory,
-        "armoire": InventoryLocation.armoire,
-        "bag": InventoryLocation.bag,
-        "currency": InventoryLocation.currency,
-        "crystals": InventoryLocation.crystals,
-        "equipped gear": InventoryLocation.equipped_gear,
-        "free company": InventoryLocation.free_company,
-        "glamour chest": InventoryLocation.glamour_chest,
-        "market": InventoryLocation.market,
-        "premium saddlebag left": InventoryLocation.premium_saddlebag_left,
-        "premium saddlebag right": InventoryLocation.premium_saddlebag_right,
-        "saddlebag left": InventoryLocation.saddlebag_left,
-        "saddlebag right": InventoryLocation.saddlebag_right,
-        "housing interior placed": InventoryLocation.housing_interior_placed,
-        "housing interior storeroom": InventoryLocation.housing_interior_stored,
-        "housing exterior placed": InventoryLocation.housing_exterior_placed,
-        "housing exterior storeroom": InventoryLocation.housing_exterior_stored,
-    }
-
-    __slots__ = (
-        "inventory_location",
-        # "name",
-        "source",
-        "total_quantity_available",
-        "type",
-    )
-
-    # def __init__(self, item_id: int, data: AllagonToolsInventoryCSV, **kwargs: Unpack[ObjectParams]) -> None:
-    def __init__(self, item: Item, atools_data: AllagonToolsInventoryCSV) -> None:
-        """Build your InventoryItem object.
-
-        Parameters
-        ----------
-        item: :class:`int`
-            Our Moogle's Intuition :class:`Item` object.
-        atools_data: :class:`AllagonToolsInventoryCSV`
-            The JSON data.
-
-        """
-        # super().__init__(atools_data, moogle=kwargs["moogle"])
-        # self.id = item_id
-        self.item: Item = item
-        self.id = item.id
-        self.name = item.name
-        self._repr_keys = ["name", "id", "quality", "quantity", "location", "source"]
-        for key in self.__slots__:
-            value: Optional[int | bool | str] = atools_data.get(key, None)
-            if value is None:
-                continue
-
-            if key.lower() == "type":
-                if isinstance(value, str) and value.lower() == "nq":
-                    self.quality = ItemQuality.NQ
-
-                elif isinstance(value, str) and value.lower() == "hq":
-                    self.quality = ItemQuality.HQ
-
-            elif key.lower() == "total_quantity_available":
-                self.quantity = int(value)
-
-            elif key.lower() == "inventory_location" and isinstance(value, str):
-                self.location = self._convert_inv_loc_to_enum(location=value)
-
-            else:
-                setattr(self, key, value)
-
-    def __len__(self) -> int:
-        return super().__len__()
-
-    def __eq__(self, other: object) -> bool:
-        return super().__eq__(other=other)
-
-    def __hash__(self) -> int:
-        return super().__hash__()
-
-    def __lt__(self, other: object) -> bool:
-        return super().__lt__(other=other)
-
-    @staticmethod
-    def _convert_inv_loc_to_enum(location: str) -> InventoryLocation:
-        """Convert a provided location string from the Allagon Tools CSV into a :class:`InventoryLocationEnum`.
-
-        Parameters
-        ----------
-        location: :class:`str`
-            The inventory location string.
-
-        Returns
-        -------
-        :class:`InventoryLocationEnum`
-            The converted inventory location as an Enum.
-
-        """
-        for key, value in InventoryItem._locations.items():
-            if location.lower().startswith(key):
-                return value
-
-        return InventoryLocation.null
 
 
 class SuggestedPrice:

@@ -37,7 +37,7 @@ from async_universalis import CurrentData, CurrentDataEntries, DataCenter, Histo
 from async_universalis.errors import UniversalisError
 from thefuzz import fuzz  # type: ignore[reportMissingStubFile]
 
-from moogle_intuition._types import CurrencySpender, Vendor
+from moogle_intuition._types import CurrencySpender, ShoppingItem, Vendor
 from moogle_intuition.errors import MoogleLookupError
 from moogle_intuition.ff14angler._types import FishingData
 
@@ -403,7 +403,7 @@ class Generic:
         for entry in items:
             value = struct.get(entry.id, None)
             if value is None:
-                struct[entry.id] = {"count": 1, "item": entry, "ingredients": []}
+                struct[entry.id] = {"count": 1, "item": entry}
             else:
                 value["count"] += 1
 
@@ -2355,6 +2355,7 @@ class Item(Object):
         """
         if self._icon_data is not None:
             return self._icon_data
+
         try:
             res: GTObject = await self._moogle._garlandtools.icon(icon_id=self.icon, icon_type=IconType.item)
             self._icon_data = res
@@ -2658,7 +2659,6 @@ class JobRecipe(Object):
         self,
         *,
         count: int = 1,
-        results: Optional[dict[int, ShoppingItem]] = None,
         **kwargs: Unpack[CurMarketBoardParams],
     ) -> Optional[dict[int, ShoppingItem]]:
         """Fetches purchasing information related to the Recipe and it's ingredients.
@@ -2673,8 +2673,6 @@ class JobRecipe(Object):
         ----------
         count: :class:`int`, optional.
             Number of "ingredients" times number of Items to craft, default is 1.
-        results: :class:`Optional[dict[int, ShoppingItem]]`, optional
-            Any data from a previous call of the function, by default None.
         **kwargs: :class:`Unpack[CurMarketBoardParams]`
             Any additional params to pass to `<UniversalisAPI.get_bulk_current_data()>`.
 
@@ -2691,7 +2689,7 @@ class JobRecipe(Object):
             LOGGER.warning("<%s> | Failed to Recipe ID. | Recipe: %s", __class__.__name__, self.id)
             return None
 
-        return await recipe.get_crafting_cost(results=results, count=count, **kwargs)
+        return await recipe.get_crafting_cost(count=count, **kwargs)
 
 
 class Recipe(Object):
@@ -2918,7 +2916,6 @@ class Recipe(Object):
         self,
         *,
         count: int = 1,
-        results: Optional[dict[int, ShoppingItem]] = None,
         **kwargs: Unpack[CurMarketBoardParams],
     ) -> Optional[dict[int, ShoppingItem]]:
         """Fetches purchasing information related to the Recipe and it's ingredients.
@@ -2929,20 +2926,18 @@ class Recipe(Object):
         ----------
         count: :class:`int`, optional.
             Number of "ingredients" times number of Items to craft, default is 1.
-        results: :class:`Optional[dict[int, ShoppingItem]]`, optional
-            Any data from a previous call of the function, by default None.
         **kwargs: :class:`Unpack[CurMarketBoardParams]`
             Any additional params to pass to `<UniversalisAPI.get_bulk_current_data()>`.
 
         Returns
         -------
-        :class:`Optional[dict[int, CraftingCost]]`
+        :class:`Optional[dict[int, ShoppingItem]]`
             Information about every Item needed to craft this Recipe.
 
         """
         # First iteration; set's the data structure up.
-        if results is None:
-            results = {}
+        # if results is None:
+        results:dict[int, ShoppingItem] = {}
 
         # We are getting all the items and ingredients to craft the item.
         for ingredient in self:
@@ -2951,7 +2946,7 @@ class Recipe(Object):
                 continue
 
             if results.get(item.id, None) is None:
-                results[item.id] = {"item": item, "count": ingredient[1]*count, "ingredients": []}
+                results[item.id] = {"item": item, "count": ingredient[1]*count}
             else:
                 results[item.id]["count"] += ingredient[1]*count
 
@@ -2962,9 +2957,12 @@ class Recipe(Object):
 
             if item.mb_current is None:
                 await item.get_current_marketboard(**kwargs)
+
             # This is for the item if it has it's own recipe
             if item.recipe is not None:
-                await item.recipe.get_crafting_cost(results=results, count=ingredient[1]*count, **kwargs)
+                res: dict[int, ShoppingItem] | None = await item.recipe.get_crafting_cost(count=ingredient[1]*count, **kwargs)
+                if res is not None:
+                    results[item.id]["ingredients"] = res
 
         return results
 
@@ -3937,7 +3935,6 @@ class PlaceName(Object):
         super().__init__(data=data, moogle=kwargs["moogle"])
         self._repr_keys = ["name"]
         self.name = data.get("name", None)
-
 
 
 class SuggestedPrice:

@@ -547,7 +547,7 @@ class Shopping(TypedDict, total=False):
 class ShoppingItem(TypedDict):
     item: Item
     count: int
-    ingredients: list[ShoppingItem]
+    ingredients: NotRequired[dict[int, ShoppingItem]]
 
 
 class ShoppingCurrency(TypedDict):

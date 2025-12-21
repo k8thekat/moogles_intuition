@@ -21,7 +21,7 @@ Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Literal, Optional, overload
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple, Optional, overload
 
 import aiohttp
 import bs4
@@ -29,6 +29,8 @@ from bs4.element import AttributeValueList, NavigableString
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from types import TracebackType
+    from typing import Self
 
     from bs4._typing import (
         _AtMostOneElement as bs4AtMostOneElement,  # pyright: ignore[reportPrivateUsage]
@@ -41,6 +43,17 @@ if TYPE_CHECKING:
 
 
 __all__ = ("Angler", "AnglerBaits", "AnglerFish")
+
+__version__ = "1.0.1"
+class VersionInfo(NamedTuple):
+    major: int
+    minor: int
+    revision: int
+    release_level: Literal["release", "development"]
+
+
+version_info: VersionInfo = VersionInfo(major=2, minor=2, revision=0, release_level="development")
+
 
 LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -75,6 +88,7 @@ class PartialAngler:
                 f"{e}: {getattr(self, e)}" for e in sorted(self.__dict__) if e.startswith("_") is False
             ])
 
+
 class Angler(PartialAngler):
     """A class to handle parsing `https://en.ff14angler.com/`.
 
@@ -89,6 +103,7 @@ class Angler(PartialAngler):
 
     session: Optional[aiohttp.ClientSession]
     _session: Optional[aiohttp.ClientSession]
+    area_mapping: Optional[dict[str, dict[str, int]]]
 
     def __init__(self, session: Optional[aiohttp.ClientSession] = None) -> None:
         """Build our :class:`Angler` object.
@@ -101,6 +116,19 @@ class Angler(PartialAngler):
         """
         self.session = session
         self._session = None
+        self.area_mapping = None
+
+    async def __aenter__(self, session: Optional[aiohttp.ClientSession] = None) -> Self:  # noqa: D105
+        self.__init__(session=session)
+        return self
+
+    async def __aexit__(  # noqa: D105
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_value: Optional[BaseException],
+        traceback: Optional[TracebackType],
+    ) -> None:
+        await self.clean_up()
 
     async def clean_up(self) -> None:
         """Cleans up any open resources."""
@@ -409,7 +437,8 @@ class Angler(PartialAngler):
             return fishing_data[fish_id]
         return fishing_data
 
-    def match_select_spot(self, tag: bs4.Tag) -> bool:
+    @staticmethod
+    def match_select_spot(tag: bs4.Tag) -> bool:
         """Creates a generic `bs4.Tag` with set values to check against within the `bs4.BeautifulSoup.find()` name parameter.
 
         .. note::
@@ -440,6 +469,8 @@ class Angler(PartialAngler):
         include_inverted_map: bool = False,
     ) -> Optional[tuple[dict[str, int], dict[int, str]]] | Optional[dict[str, int]]:
         """Fetches the Location ID values and names from `FF14Angler` Location dropdown container on the main page.
+
+        This also builds our :class:`Self.area_mapping` attribute.
 
         .. note::
             - Data structure is `{location_name[str] : location_id[int]}`
@@ -478,9 +509,11 @@ class Angler(PartialAngler):
             LOGGER.error("<%s.get_location_id_mapping failed to get page data from url: %s", __class__.__name__, url)
             return locations
 
+        self.area_mapping = {}
         for cur_location in page_data.children:
             if cur_location.name != "optgroup":
                 continue
+            pos_area = cur_location.get("label")
 
             option_grp: Optional[list[CustomTag]] = cur_location.find_all("option")
             if option_grp is None:
@@ -496,6 +529,15 @@ class Angler(PartialAngler):
                     loc_name = "Sui–no–Sato"
 
                 locations[loc_name] = int(loc_id)
+                if pos_area is not None and isinstance(pos_area, str):
+                    cur_data: dict[str, int] | None = self.area_mapping.get(pos_area)
+                    if cur_data is None:
+                        self.area_mapping[pos_area] = {loc_name: int(loc_id)}
+                        continue
+
+                    cur_data[loc_name] = int(loc_id)
+                    self.area_mapping[pos_area] = cur_data
+
         LOGGER.debug("Fetched FF14Angler Location to ID mapping data. | Entries: %s", len(locations))
 
         if include_inverted_map is True:
@@ -612,6 +654,38 @@ class Angler(PartialAngler):
         # setattr(self, "fish_map", fish)
         LOGGER.debug("Fetched FF14Angler Fish to ID mapping data. | Entries: %s", len(fish))
         return fish
+
+    def resolve_area_from_loc_id(self, location_id: int) -> Optional[dict[str, dict[str, int]]]:
+        """Returns Parent Area name and sub-zone information related to the `location_id` provided.
+
+        .. note::
+            Greenwards location id is `70302` for this context. The parent area would be "The Churning Mists"...
+            - `Self.resolve_area_from_loc_id( location_id = 70302 )` returns `{"The Churning Mists": {"Greenward": 70302}}`
+
+        Parameters
+        ----------
+        location_id: :class:`int`
+            The location ID to search for.
+
+        Returns
+        -------
+        :class:`Optional[dict[str, dict[str, int]]]`
+            Returns a dictionary of `area_name: {sub_area_name: sub_area_id}` if applicable, otherwise `None`.
+
+        """
+        # If called prior to `get_location_id_mapping`.
+        if self.area_mapping is None:
+            return None
+
+        for area_name in self.area_mapping:
+            sub_area: dict[str, int] | None = self.area_mapping.get(area_name)
+            if sub_area is None:
+                continue
+            for name, loc_id in sub_area.items():
+                if loc_id == location_id:
+                    return {area_name: {name: loc_id}}
+
+        return None
 
 
 class AnglerSoup(bs4.BeautifulSoup):
@@ -757,8 +831,8 @@ class AnglerFish(PartialAngler):
 
     Attributes
     ----------
-    location_name: :class:`str`, optional
-        The fishing spot name for this Fish.
+    spot: :class:`dict[str, dict[str, int]]`, optional
+        The Fishing Spot information, by default is None.
     item_id: :class:`int`
         The Item ID in relation to FF14Angler Fish IDs.
     fish_name: :class:`str`
@@ -776,11 +850,21 @@ class AnglerFish(PartialAngler):
     ---------
     ff14angler_url: :class:`str`
         The FF14 Angler URL for the Fish.
+    ff14angler_spot_url: :class:`str`
+        The FF14 Angler URL for the Spot.
+    sub_area_name: :class:`str`, optional
+        The Sub Area name if applicable.
+    sub_area_id: :class:`int`, optional
+        The Sub Area ID if applicable.
+    area_name: :class:`str`, optional
+        The Area name if applicable.
+    area_id: :class:`int`, optional
+        The Area ID if applicable.
 
     """
 
     # I am supplying this value only to make it easier when you have this class by itself.
-    location_name: Optional[str]
+    spot: Optional[dict[str, dict[str, int]]]
 
     item_id: int
     fish_name: str
@@ -790,13 +874,40 @@ class AnglerFish(PartialAngler):
     baits: dict[int, AnglerBaits]
     "Angler Bait ID : <AnglerBaits> aka location specific bait information."
 
-
     @property
     def ff14angler_url(self) -> str:
         """The FF14Angler website url for the Fish."""
         return f"https://en.ff14angler.com/fish/{self.item_id}"
 
-    def __init__(self, item_id: int, data: FishingData, location_name: Optional[str] = None) -> None:
+    @property
+    def ff14angler_spot_url(self) -> str:
+        """The FF14Angler website url for the Spot if the `sub_area_id` is available, otherwise returns the home page."""
+        if self.sub_area_id is None:
+            return "https://en.ff14angler.com"
+        return f"https://en.ff14angler.com/spot/{self.sub_area_id}"
+
+    @property
+    def sub_area_name(self) -> Optional[str]:
+        """Returns the Sub Area name if applicable."""
+        if self.spot is not None and self.area_name is not None:
+            return next(iter(self.spot[self.area_name]))
+        return None
+
+    @property
+    def sub_area_id(self) -> Optional[int]:
+        """Returns the Sub Area ID if applicable."""
+        if self.spot is not None and self.area_name is not None:
+            return next(iter(self.spot[self.area_name].values()))
+        return None
+
+    @property
+    def area_name(self) -> Optional[str]:
+        """Returns the Parent Area name if applicable."""
+        if self.spot is not None:
+            return next(iter(self.spot))
+        return None
+
+    def __init__(self, item_id: int, data: FishingData, spot: Optional[dict[str, dict[str, int]]] = None) -> None:
         """Build your :class:`AnglerFish` object.
 
         Parameters
@@ -805,16 +916,16 @@ class AnglerFish(PartialAngler):
             The FF14 Angler fish id.
         data: :class:`FishingData`
             The FF14 Angler fish data.
-        location_name: :class:`Optional[str]`, optional
-            The FF14 Angler fishing location, by default None.
+        spot: :class:`Optional[dict[str, dict[str, int]]]`, optional
+            The FF14 Angler Fishing Spot information, by default None.
 
         """
-        LOGGER.debug("<%s.__init__()> location: %s | data: %s", __class__.__name__, location_name, data)
+        LOGGER.debug("<%s.__init__()> location: %s | data: %s", __class__.__name__, spot, data)
         super().__init__(data=data)
         self.item_id = item_id
-        self.location_name = location_name
+        self.spot = spot
         self.baits = {}
-        self._repr_keys = ["fish_name", "item_id", "location_name", "hook_time", "restrictions", "baits"]
+        self._repr_keys = ["fish_name", "item_id", "spot", "hook_time", "restrictions", "baits"]
         for key, value in data.items():
             if key.lower() == "baits" and isinstance(value, dict):
                 for k, v in value.items():  # type: ignore[reportUnkownVariableType]
@@ -823,7 +934,6 @@ class AnglerFish(PartialAngler):
 
             else:
                 setattr(self, key, value)
-
 
     def best_bait(self) -> Optional[AnglerBaits]:
         """Retrieves the optimal chance Fishing bait related to the `<AnglerFish.location_name>` class.

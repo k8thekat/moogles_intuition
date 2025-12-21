@@ -44,7 +44,9 @@ if TYPE_CHECKING:
 
 __all__ = ("Angler", "AnglerBaits", "AnglerFish")
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
+
+
 class VersionInfo(NamedTuple):
     major: int
     minor: int
@@ -52,7 +54,7 @@ class VersionInfo(NamedTuple):
     release_level: Literal["release", "development"]
 
 
-version_info: VersionInfo = VersionInfo(major=2, minor=2, revision=0, release_level="development")
+version_info: VersionInfo = VersionInfo(major=1, minor=0, revision=2, release_level="release")
 
 
 LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -161,6 +163,98 @@ class Angler(PartialAngler):
             )
             return None
         return await res.content.read()
+
+    async def get_fish_locations(self, fish_id: int) -> Optional[list[int]]:
+        """Retrieves the data related to the `fish_id` parameters fishing spots on FF14 Angler website.
+
+        .. warning::
+            - Do not use any spot or location ID information from `xivdataminig`/`Moogle`, it's not related.
+
+        Parameters
+        ----------
+        fish_id: :class:`int`
+            The FF14 Angler Fish ID to search for and get the FF14 Angler fishing spots.
+
+        Returns
+        -------
+        :class:`Optional[list[int]]`
+            Returns a list of FF14 Angler compatible fishing spot IDs related to the provided `fish_id` parameter.
+
+        """
+        LOGGER.debug("Fetching FF14Angler Fish location data for Fish ID: %s", fish_id)
+        url = "https://en.ff14angler.com/fish/" + str(fish_id)
+        fishing_html_data: Optional[bytes] = await self._request(url=url)
+
+        soup = AnglerSoup(fishing_html_data, "html.parser")
+
+        # just a list of IDs for locations
+        locations: list[int] = []
+
+        page_data: Optional[CustomTag] = soup.find(class_="info_section list")
+        if page_data is None:
+            LOGGER.error("<%s.get_fish_locations failed to get page data from url: %s", __class__.__name__, url)
+            return locations
+        try:
+            # get the available fish, skipping headers/etc
+            avail_locations: list[CustomTag] = list(list(page_data.children)[3].children)
+        except IndexError:
+            LOGGER.exception("<%s.get_fish_location> had an <IndexError> for `avail_locations`.", __class__.__name__)
+            return None
+
+        for cur_loc_index in range(1, len(avail_locations), 2):
+            cur_loc: list[CustomTag] = list(avail_locations[cur_loc_index].children)
+            cur_loc_info: CustomTag | None = cur_loc[0].find("a")
+            if cur_loc_info is not None:
+                temp: Optional[bs4AttributeValue] = cur_loc_info.get("href")
+                if isinstance(temp, str):
+                    cur_loc_id = int(temp.split("/")[-1])
+                    locations.append(cur_loc_id)
+
+        return locations
+
+    async def get_fish_id_mapping(self) -> Optional[dict[str, int]]:
+        """Creates a Fish name to ID mapping.
+
+        Fetches the Fish ID values and names from `FF14Angler` Fish dropdown container,
+        then returns the data structure in `fish_name : fish_id`.
+
+        .. note::
+            - These will be used to map to the `XIVdatamining` fish names.
+            - We can then use the `https://en.ff14angler.com/fish/[X]` where `X` is the `fish_id` in the returned dictionary.
+
+
+        Returns
+        -------
+        Optional[:class:`dict[str, int]`]
+            A dictionary of `fish_name: fish_id`.
+
+        """
+        url = "https://en.ff14angler.com/"
+        fishing_html_data: Optional[bytes] = await self._request(url=url)
+
+        soup = AnglerSoup(fishing_html_data, "html.parser")
+        fish: dict[str, int] = {}
+
+        page_data: CustomTag | None = soup.find(self.match_select_fish)
+        if page_data is None:
+            LOGGER.error("<%s.get_fish_id_mapping> failed to get page data from url: %s", __class__.__name__, url)
+            return fish
+        # get the available locations and their IDs
+        for cur_fish in page_data.children:
+            if cur_fish.name == "option":
+                fish_id: Optional[bs4AttributeValue] = cur_fish.get("value")
+                if fish_id is None or isinstance(fish_id, AttributeValueList):
+                    continue
+                if cur_fish.string is None:
+                    continue
+                fish_name = cur_fish.string.strip()
+                # Ignores the prompt in the box.
+                if fish_name.startswith("Select"):
+                    continue
+                fish[fish_name] = int(fish_id)
+        # setattr(self, "fish_map", fish)
+        LOGGER.debug("Fetched FF14Angler Fish to ID mapping data. | Entries: %s", len(fish))
+        return fish
 
     @overload
     async def get_location_fish_data(self, location_id: int, fish_id: int = ...) -> Optional[FishingData]: ...
@@ -437,26 +531,6 @@ class Angler(PartialAngler):
             return fishing_data[fish_id]
         return fishing_data
 
-    @staticmethod
-    def match_select_spot(tag: bs4.Tag) -> bool:
-        """Creates a generic `bs4.Tag` with set values to check against within the `bs4.BeautifulSoup.find()` name parameter.
-
-        .. note::
-            - This is in reference to the `bs4._typing` -> `_TagMatchFunction` type alias.
-
-        Parameters
-        ----------
-        tag: :class:`bs4.Tag`
-            A generic `bs4.Tag` class.
-
-        Returns
-        -------
-        :class:`bool`
-            If the tag has the right name, attributes and the `name` key value is == "spot".
-
-        """
-        return tag.name == "select" and tag.has_attr("name") and tag.get("name") == "spot"
-
     @overload
     async def get_location_id_mapping(self, *, include_inverted_map: Literal[True]) -> Optional[tuple[dict[str, int], dict[int, str]]]: ...
 
@@ -548,52 +622,8 @@ class Angler(PartialAngler):
         # setattr(self, "location_map", locations)
         return locations
 
-    async def get_fish_locations(self, fish_id: int) -> Optional[list[int]]:
-        """Retrieves the data related to the `fish_id` parameters fishing spots on FF14 Angler website.
-
-        Parameters
-        ----------
-        fish_id: :class:`int`
-            The FF14 Angler Fish ID to search for and get the FF14 Angler fishing spots.
-
-        Returns
-        -------
-        :class:`Optional[list[int]]`
-            Returns a list of FF14 Angler compatible fishing spot IDs related to the provided `fish_id` parameter.
-
-        """
-        LOGGER.debug("Fetching FF14Angler Fish location data for Fish ID: %s", fish_id)
-        url = "https://en.ff14angler.com/fish/" + str(fish_id)
-        fishing_html_data: Optional[bytes] = await self._request(url=url)
-
-        soup = AnglerSoup(fishing_html_data, "html.parser")
-
-        # just a list of IDs for locations
-        locations: list[int] = []
-
-        page_data: Optional[CustomTag] = soup.find(class_="info_section list")
-        if page_data is None:
-            LOGGER.error("<%s.get_fish_locations failed to get page data from url: %s", __class__.__name__, url)
-            return locations
-        try:
-            # get the available fish, skipping headers/etc
-            avail_locations: list[CustomTag] = list(list(page_data.children)[3].children)
-        except IndexError:
-            LOGGER.exception("<%s.get_fish_location> had an <IndexError> for `avail_locations`.", __class__.__name__)
-            return None
-
-        for cur_loc_index in range(1, len(avail_locations), 2):
-            cur_loc: list[CustomTag] = list(avail_locations[cur_loc_index].children)
-            cur_loc_info: CustomTag | None = cur_loc[0].find("a")
-            if cur_loc_info is not None:
-                temp: Optional[bs4AttributeValue] = cur_loc_info.get("href")
-                if isinstance(temp, str):
-                    cur_loc_id = int(temp.split("/")[-1])
-                    locations.append(cur_loc_id)
-
-        return locations
-
-    def match_select_fish(self, tag: bs4.Tag) -> bool:
+    @staticmethod
+    def match_select_fish(tag: bs4.Tag) -> bool:
         """Creates a generic `bs4.Tag` with set values to check against within the `bs4.BeautifulSoup.find()` name parameter.
 
         - This is in reference to the `bs4._typing` -> `_TagMatchFunction` type alias.
@@ -611,49 +641,25 @@ class Angler(PartialAngler):
         """
         return tag.name == "select" and tag.has_attr("name") and tag.get("name") == "fish"
 
-    async def get_fish_id_mapping(self) -> Optional[dict[str, int]]:
-        """Creates a Fish name to ID mapping.
-
-        Fetches the Fish ID values and names from `FF14Angler` Fish dropdown container,
-        then returns the data structure in `fish_name : fish_id`.
+    @staticmethod
+    def match_select_spot(tag: bs4.Tag) -> bool:
+        """Creates a generic `bs4.Tag` with set values to check against within the `bs4.BeautifulSoup.find()` name parameter.
 
         .. note::
-            - These will be used to map to the `XIVdatamining` fish names.
-            - We can then use the `https://en.ff14angler.com/fish/[X]` where `X` is the `fish_id` in the returned dictionary.
+            - This is in reference to the `bs4._typing` -> `_TagMatchFunction` type alias.
 
+        Parameters
+        ----------
+        tag: :class:`bs4.Tag`
+            A generic `bs4.Tag` class.
 
         Returns
         -------
-        Optional[:class:`dict[str, int]`]
-            A dictionary of `fish_name: fish_id`.
+        :class:`bool`
+            If the tag has the right name, attributes and the `name` key value is == "spot".
 
         """
-        url = "https://en.ff14angler.com/"
-        fishing_html_data: Optional[bytes] = await self._request(url=url)
-
-        soup = AnglerSoup(fishing_html_data, "html.parser")
-        fish: dict[str, int] = {}
-
-        page_data: CustomTag | None = soup.find(self.match_select_fish)
-        if page_data is None:
-            LOGGER.error("<%s.get_fish_id_mapping> failed to get page data from url: %s", __class__.__name__, url)
-            return fish
-        # get the available locations and their IDs
-        for cur_fish in page_data.children:
-            if cur_fish.name == "option":
-                fish_id: Optional[bs4AttributeValue] = cur_fish.get("value")
-                if fish_id is None or isinstance(fish_id, AttributeValueList):
-                    continue
-                if cur_fish.string is None:
-                    continue
-                fish_name = cur_fish.string.strip()
-                # Ignores the prompt in the box.
-                if fish_name.startswith("Select"):
-                    continue
-                fish[fish_name] = int(fish_id)
-        # setattr(self, "fish_map", fish)
-        LOGGER.debug("Fetched FF14Angler Fish to ID mapping data. | Entries: %s", len(fish))
-        return fish
+        return tag.name == "select" and tag.has_attr("name") and tag.get("name") == "spot"
 
     def resolve_area_from_loc_id(self, location_id: int) -> Optional[dict[str, dict[str, int]]]:
         """Returns Parent Area name and sub-zone information related to the `location_id` provided.

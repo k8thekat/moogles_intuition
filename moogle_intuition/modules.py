@@ -26,7 +26,21 @@ import json
 import logging
 import statistics
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, NamedTuple, Optional, ParamSpec, Self, TypeVar, Union, Unpack, overload
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    ForwardRef,
+    Literal,
+    NamedTuple,
+    Optional,
+    ParamSpec,
+    Self,
+    TypeVar,
+    Union,
+    Unpack,
+    overload,
+)
 
 import aiohttp
 from aiohttp_client_cache.session import CachedSession
@@ -42,6 +56,7 @@ from moogle_intuition.errors import MoogleLookupError
 from moogle_intuition.ff14angler._types import FishingData
 
 from ._enums import CraftType, Currency, EquipSlotCategory, Expansion, FishingSpotCategory, ItemUICategory
+from ._types import ItemData
 from .ff14angler import Angler, AnglerBaits, AnglerFish
 
 if TYPE_CHECKING:
@@ -69,9 +84,9 @@ if TYPE_CHECKING:
         GatheringNodeData,
         HistMarketBoardParams,
         HTMLKeys,
-        ItemData,
         ItemLevelData,
         ObjectParams,
+        PartialItemData,
         PlaceNameData,
         RecipeData,
         RecipeLevelData,
@@ -275,6 +290,7 @@ class Object:
         7: 17837,
         8: 33916,
     }
+    id: int
 
     def __init__(self, data: DataTypeAliases, *, moogle: Moogle) -> None:
         """Handles setting our `_raw` attribute and setting our `Moogle` class.
@@ -293,6 +309,12 @@ class Object:
 
     def __str__(self) -> str:
         return self.__repr__()
+
+    def to_json(self) -> dict[str, DataTypeAliases]:
+        """Returns the `Object` in JSON format."""
+        if hasattr(self, "id"):
+            return {f"{self.id}": self._raw}
+        return {"0": self._raw}
 
     def __repr__(self) -> str:
         try:
@@ -322,7 +344,7 @@ class Generic:
 
     # Item Handling.
     _items: dict[str, DataTypeAliases]
-    "Structure -> `item_id[int]` : `item_data`"
+    "Structure -> `item_id[str]` : `item_data`"
     _items_ref: dict[str | int, str | int]
     "Useful for Item Name -> Item ID lookups.  `item_name[str]` : `item_id[int]`"
 
@@ -413,7 +435,7 @@ class Generic:
                 continue
             payload += ",".join([
                 str(value["item"].id),
-                str("null" if value["item"].recipe is None else value["item"].recipe.id),
+                str("null" if value["item"].recipe is None else value["item"].recipe.recipe_id),
                 str(value["count"]) + ";",
             ])
 
@@ -758,6 +780,15 @@ class Builder(Generic):
             raise FileNotFoundError(msg, __class__.__name__, "_rebuild_files", DATA_PATH)
 
         old_cache: Path = Path(__file__).parent.joinpath("xiv_datamining_old")
+        # Removing old files.
+        if old_cache.exists() is True:
+            for file in old_cache.iterdir():
+                try:
+                    file.unlink(missing_ok=True)
+                except OSError:
+                    LOGGER.warning("<%s.%s> | Failed to remove file. | %s", __class__.__name__, "_rebuild_files", file.name)
+                    continue
+
         if old_cache.exists() is False:
             old_cache.mkdir()
 
@@ -1118,8 +1149,6 @@ class Builder(Generic):
             path.joinpath(file_name).as_posix(),
         )
 
-        # TODO(@k8thekat): Move to Builder class?
-
     def _load_json(self, path: Path, **json_args: Any) -> dict[str, DataTypeAliases]:
         if path.exists() is False:
             msg = "<%s.%s> | The Path provided does not exist. | Path: %s"
@@ -1248,7 +1277,7 @@ class Moogle(Generic):
             await self.build()
         except (FileNotFoundError, FileExistsError) as e:
             LOGGER.error("<%s.%s> | Failed to Build, rebuilding data. | Exception: %s", __class__.__name__, "build", e)
-            await self.build(rebuild_data=True)
+            await self.build(relocate_data=True)
             return self
         except ConnectionError as e:
             LOGGER.error("<%s.%s> | Failed to Build. | Exception: %s", __class__.__name__, "build", e)
@@ -1270,12 +1299,53 @@ class Moogle(Generic):
         await self._angler.clean_up()
         await self._garlandtools.close()
 
-    async def build(self, *, ignore_validation: bool = False, rebuild_data: bool = False) -> Self:
+    def create_generic_item(self, **kwargs: Unpack[PartialItemData]) -> ItemData | None:
+        """Create a default value filled :class:`ItemData` TypedDict to be supplied to a :class:`Item` object.
+
+        .. note::
+            This was built to handle items from GarlandTools that may not have an ID value.
+
+
+        .. warning::
+            There is no validation of the ID provided; so if you clash with an existing Item ID... well, you're on your own.
+
+
+        Returns
+        -------
+        :class:`ItemData | None`
+            Item data to build an :class:`Item` object.
+
+        """
+        # Credits for the enrichment of an Eorzean free company.
+        item_data: ItemData = {}  # pyright: ignore[reportAssignmentType]
+        if kwargs.get("icon") is None:
+            item_data["icon"] = 0
+        if kwargs.get("description") is None:
+            item_data["description"] = kwargs["name"] + "generic description."
+        for key, value in kwargs.items():
+            if key not in item_data:
+                item_data[key] = value
+
+        for key, value in ItemData.__annotations__.items():
+            if key not in kwargs and isinstance(value, ForwardRef):
+                if value.__forward_arg__ == "int":
+                    item_data[key] = 0
+                elif value.__forward_arg__ == "bool":
+                    item_data[key] = False
+                elif value.__forward_arg__ == "str":
+                    item_data[key] = ""
+        # This is just in case, checking a random but
+        # specific key if it exists to invalidate our "spoofing" default data.
+        if "singular" not in item_data:
+            return None
+        return item_data
+
+    async def build(self, *, ignore_validation: bool = False, relocate_data: bool = False) -> Self:
         """Builds the required arrays and library's for :class:`Moogle` to function.
 
         Parameters
         ----------
-        rebuild_data: :class:`bool`
+        relocate_data: :class:`bool`
             Relocates current local JSON files, fetches new files and builds new local JSON files, default is False.
         ignore_validation: :class:`bool`
             Allows bypassing local JSON/CSV file validation, default is False.
@@ -1286,7 +1356,7 @@ class Moogle(Generic):
             A :class:`Moogle` object.
 
         """
-        if rebuild_data is True:
+        if relocate_data is True:
             self._builder._rebuild_files()
 
         if ignore_validation is False:
@@ -1295,6 +1365,22 @@ class Moogle(Generic):
         # Item related dict/JSON
         self._items = self._builder._load_json(path=DATA_PATH.joinpath("item.json"))
         self._items_ref = self._builder._reference_dict(data=self._items, value_get="name", flip_key_value=True)
+        # This is to handle the Custom Item "fccredit"
+        # See -> https://www.garlandtools.org/db/#item/fccredit
+        fc_credit: ItemData | None = self.create_generic_item(
+            id=0,
+            name="Company Credit",
+            singular="fccredit",
+            description="Credits for the enrichment of an Eorzean free company.",
+            level_item=1,
+            is_untradeable=True,
+            stack_size=999999,
+            item_ui_category=63,  # other
+        )
+        if fc_credit is not None:
+            self._items["0"] = fc_credit
+            # This has to match the `id` value from the `item.json`; which we supplied as `0` for `fccredit`.
+            self._items_ref["fccredit"] = 0
 
         # Recipe related dict/JSON
         self._recipes = self._builder._load_json(path=DATA_PATH.joinpath("recipe.json"))
@@ -1766,7 +1852,7 @@ class Moogle(Generic):
             item = int(item)
 
         # Get a bulk of data to check average price/stack and other information to make a suggested price.
-        res: CurrentData = await self._universalis.get_current_data(item=item,**kwargs)
+        res: CurrentData = await self._universalis.get_current_data(item=item, **kwargs)
 
         stacksize: int = 0
         optimal_stacksize: str = "UNK"
@@ -1832,7 +1918,6 @@ class Moogle(Generic):
             num_of_listings = res.listings_count
         else:
             num_of_listings = kwargs.get("num_listings", 0)
-
 
         return SuggestedPrice(
             name=name,
@@ -2482,6 +2567,9 @@ class Item(Object):
         self._tradeshops = []
         for entry in trade_shops:
             for shop_info in partials:
+                if shop_info["id"].isnumeric() is False:
+                    continue
+
                 if int(shop_info["id"]) in entry["npcs"]:
                     try:
                         currency: Item = self._moogle.get_item(item=str(entry["listings"][0]["currency"][0]["id"]), limit_results=1)
@@ -2552,12 +2640,12 @@ class JobRecipe(Object):
     __slots__ = ("ALC", "ARM", "BSM", "CRP", "CUL", "GSM", "LTW", "WVR")
 
     @property
-    def id(self) -> Optional[int]:
+    def recipe_id(self) -> Optional[int]:
         """The first occurence of a :class:`Recipe` ID during class initialization, if applicable."""
         return self._id
 
-    @id.setter
-    def id(self, value: int) -> None:
+    @recipe_id.setter
+    def recipe_id(self, value: int) -> None:
         self._id = value
 
     def __init__(self, data: RecipeLookUpData, item: Item, **kwargs: Unpack[ObjectParams]) -> None:
@@ -2577,7 +2665,7 @@ class JobRecipe(Object):
         super().__init__(data=data, moogle=kwargs["moogle"])
         # self._items: list[Recipe] = []
         self._id = None
-        self._repr_keys = ["id"]
+        self._repr_keys = ["recipe_id"]
 
         self._item = item
 
@@ -2586,8 +2674,8 @@ class JobRecipe(Object):
             if value is None:
                 continue
             if isinstance(value, int) and value != 0:
-                if self.id is None:
-                    self.id = value
+                if self.recipe_id is None:
+                    self.recipe_id = value
                 # This takes the value data and builds our FFXIVRecipe class from the raw JSON stored on our Moogle class.
                 try:
                     recipe = self._get_recipe(str(value))
@@ -2597,7 +2685,6 @@ class JobRecipe(Object):
                     setattr(self, key, value)
             else:
                 setattr(self, key, None)
-
 
     def __iter__(self) -> Iterator[Recipe]:
         _iter = 0
@@ -2684,9 +2771,9 @@ class JobRecipe(Object):
         """
         # We are getting all the items and ingredients to craft the item.
         try:
-            recipe: Recipe = self._get_recipe(recipe_id=str(self.id))
+            recipe: Recipe = self._get_recipe(recipe_id=str(self.recipe_id))
         except MoogleLookupError:
-            LOGGER.warning("<%s> | Failed to Recipe ID. | Recipe: %s", __class__.__name__, self.id)
+            LOGGER.warning("<%s> | Failed to Recipe ID. | Recipe: %s", __class__.__name__, self.recipe_id)
             return None
 
         return await recipe.get_crafting_cost(count=count, **kwargs)
@@ -2889,7 +2976,6 @@ class Recipe(Object):
                     continue
                 setattr(self, key, value)
 
-
     def __iter__(self) -> Iterator[tuple[Item, int]]:
         """Yields a tuple containing :class:`Item` and item count:class:`int`."""
         _iter = 0
@@ -2907,10 +2993,8 @@ class Recipe(Object):
             _iter += 1
             yield ingredient, count
 
-
     def __len__(self) -> int:  # noqa: D105
         return len([entry for entry in self])  # noqa: C416
-
 
     async def get_crafting_cost(
         self,
@@ -2937,7 +3021,7 @@ class Recipe(Object):
         """
         # First iteration; set's the data structure up.
         # if results is None:
-        results:dict[int, ShoppingItem] = {}
+        results: dict[int, ShoppingItem] = {}
 
         # We are getting all the items and ingredients to craft the item.
         for ingredient in self:
@@ -2946,9 +3030,9 @@ class Recipe(Object):
                 continue
 
             if results.get(item.id, None) is None:
-                results[item.id] = {"item": item, "count": ingredient[1]*count}
+                results[item.id] = {"item": item, "count": ingredient[1] * count}
             else:
-                results[item.id]["count"] += ingredient[1]*count
+                results[item.id]["count"] += ingredient[1] * count
 
             if item.garlandtools_data is None:
                 await item.get_garlandtools_data()
@@ -2960,7 +3044,7 @@ class Recipe(Object):
 
             # This is for the item if it has it's own recipe
             if item.recipe is not None:
-                res: dict[int, ShoppingItem] | None = await item.recipe.get_crafting_cost(count=ingredient[1]*count, **kwargs)
+                res: dict[int, ShoppingItem] | None = await item.recipe.get_crafting_cost(count=ingredient[1] * count, **kwargs)
                 if res is not None:
                     results[item.id]["ingredients"] = res
 
@@ -3084,7 +3168,6 @@ class Fish(Object):
             return None
 
         data: list[AnglerFish] = []
-        location_name: Optional[str] = None
         chance = 0
         best: Optional[AnglerFish] = None
         LOGGER.debug("Checking Best Chance: %s | Type: %s | Entries: %s", best_chance, type(self), len(data))
@@ -3094,9 +3177,14 @@ class Fish(Object):
                 continue
 
             # We use our inverted location mapping to get a location name.
-            if self._moogle._angler_invert_loc_map is not None:
-                location_name = self._moogle._angler_invert_loc_map.get(entry)
-            fish = AnglerFish(item_id=fish_id, data=res, location_name=location_name)
+            # if self._moogle._angler_invert_loc_map is not None:
+            #     location_name = self._moogle._angler_invert_loc_map.get(entry)
+            spot = None
+            if self._moogle._angler.area_mapping is not None:
+                spot = self._angler.resolve_area_from_loc_id(location_id=entry)
+
+            fish = AnglerFish(item_id=fish_id, data=res, spot=spot)
+
             data.append(fish)
 
             # This is to handle retrieving the best location, lure and chance to catch the fish.
@@ -3234,7 +3322,6 @@ class Fishing(Fish):
             LOGGER.warning("<%s> | Failed to find Fishing spot id. | ID: %s", __class__.__name__, self.fishing_spot_id)
             self._fishing_spot = None
         return self._fishing_spot
-
 
 
 class SpearFishing(Fish):
@@ -3597,10 +3684,8 @@ class FishingSpot(Object):
             _iter += 1
             yield item
 
-
     def __len__(self) -> int:  # noqa: D105
         return len([entry for entry in self])  # noqa: C416
-
 
     @property
     def angler_url(self) -> str:
@@ -3719,7 +3804,6 @@ class Gathering(Object):
         # Early exit to prevent re-fetching data.
         if fetch_data is False and self.nodes is not None:
             return self.nodes
-
 
         nodes: list[int] | None = self.item.garlandtools_data["item"].get("nodes", None)
         if nodes is None:

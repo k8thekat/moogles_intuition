@@ -19,3 +19,4 @@ Additional features and or integration with other platforms.
 ## GarlandTools Parsing
 - Support `Item` -> Instance parsing (where to get/etc)
 - Support `Item` -> Quest info
+- Support `Item` -> Vendor Info

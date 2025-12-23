@@ -103,14 +103,14 @@ wheels = [
 
 [[package]]
 name = "async-garlandtools"
-version = "1.2.2"
+version = "1.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "aiohttp-client-cache" },
     { name = "aiosqlite" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a9/cd/261b8d5700b7f5206bf00c6254fd89bb6eb6bd3a792e683b1a133d64dd3a/async_garlandtools-1.2.2.tar.gz", hash = "sha256:2063a7c13f182ca8912a01ca5ae4c828237e94139044792075857c6f197adccf", size = 18687, upload-time = "2025-10-31T19:03:54.925Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ce/ca/0413e9c62ee1b1a40e65d239c4f5a72a4761cfef169dfb563b2966ee6353/async_garlandtools-1.4.1.tar.gz", hash = "sha256:8480640c47837c5ec27a1b905db31efcd996af7a26c810612aae72dc1f9e3c64", size = 19144, upload-time = "2025-12-21T19:50:41.54Z" }
 
 [[package]]
 name = "async-universalis"

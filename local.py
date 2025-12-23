@@ -1,15 +1,19 @@
-# type:ignore
-# ruff: noqa
+# pyright: ignore[reportUnusedImport]  # noqa: D100
+from __future__ import annotations
+
 import argparse
 import asyncio
 import base64
 import copy
+import csv
 import datetime
 import json
 import logging
 import operator
+import pickle
 import subprocess
 import sys
+import time
 from argparse import Namespace
 from configparser import ConfigParser
 from logging.handlers import TimedRotatingFileHandler
@@ -19,18 +23,25 @@ from time import time
 from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypedDict, Unpack
 
 import aiohttp
+import aiohttp.web
+from aiohttp import FormData
 from async_garlandtools import GarlandToolsAsync as GarlandTools, IconType
-from async_garlandtools._types import ItemResponse, TradeShops
+from async_garlandtools._types import ItemResponse, NodeResponse, TradeShops
 from async_universalis import CurrentData, CurrentDataEntries, DataCenter, HistoryData, MultiPart, UniversalisAPI, World
+from bs4 import BeautifulSoup
+from bs4.element import Tag
 
-from moogle_intuition import Currency, Item, Moogle, Expansion
-from moogle_intuition._enums import InventoryLocation
-from moogle_intuition._types import Crafting, CurMarketBoardParams, ShoppingCurrency, Vendor
+from moogle_intuition import Angler, Currency, Expansion, GatheringNode, Item, Moogle
+from moogle_intuition._types import CurMarketBoardParams, CurrencySpender, ShoppingCurrency, ShoppingItem, Vendor
+from moogle_intuition.ext.converters import Converter
+from moogle_intuition.ff14angler import AnglerFish, AnglerSoup, CustomTag
 
 if TYPE_CHECKING:
-    from async_garlandtools._types import ItemResponse
+    from collections.abc import Awaitable, Callable, Coroutine  # pyright: ignore[reportUnusedImport]
 
-    from moogle_intuition._types import MakePlaceData
+    from async_garlandtools._types import ItemResponse, Node, NodeResponse
+
+    from moogle_intuition._types import CurrencySpender, MakePlaceData, MakePlaceShopping, PlaceNameData
     from moogle_intuition.ff14angler import AnglerFish
     from moogle_intuition.modules import InventoryItem
 
@@ -54,233 +65,129 @@ a = [
 ]
 
 
+b = """<UIForeground>F201F8</UIForeground><UIGlow>F201F9</UIGlow>EXP Bonus:<UIGlow>01</UIGlow><UIForeground>01</UIForeground> +3% <UIForeground>F201F8</UIForeground><UIGlow>F201F9</UIGlow>Duration:<UIGlow>01</UIGlow><UIForeground>01</UIForeground> 30m
+(Duration can be extended to 60m by consuming multiple)"""
+
 async def local_test() -> None:
     """Co-routine to run local tests."""
-    moogle: Moogle = await Moogle().build()
-    stime = time()  # don't remove this line.
-    item = moogle.get_item("9", limit_results=1)
-    await item.get_garlandtools_data()
-    print(item.garlandtools_data.get("item").get("patch"))
-    LOGGER.info("Completed local_test() in %s seconds...", format(time() - stime, ".3f"))
+    moogle: Moogle = await Moogle().build(ignore_validation=True)
+    # res: dict[int, CurrencySpender] | None = await moogle.currency_spender(Currency.serpent_seal, patch=Expansion.shadowbringers, world_or_dc=DataCenter.Crystal)
+    # if res is None:
+    #     return
+    item = moogle.get_item("15855", limit_results=1)
+    print(item.name)
+    gt_data: ItemResponse | None = await item.get_garlandtools_data()
+    if gt_data is not None:
+        pprint(gt_data["item"].get("tradeShops"))
+    print(item.get_tradeshops())
     await moogle.clean_up()
 
-
-async def currency(moogle: Moogle) -> None:
-    currency = Currency.Bicolor_Gemstone
-    res: dict[int, ShoppingCurrency] | None = await moogle.currency_spender(currency, patch=Expansion.Endwalker, world_or_dc=World.Zalera)
-    # print(res)
-    if res is not None:
-        write_data_to_file(file_name=f"{currency.name}.txt", data=parse_shopping_data(res), path=Path().joinpath("local_data/dumps"))
-
-
-def parse_shopping_data(data: dict[int, ShoppingCurrency]) -> list[str]:
-    """I was using this to parse currency_spender return data."""
-    output: list[str] = []
-    entries: list[ShoppingCurrency] = []
-    for entry in data:
-        res: ShoppingCurrency | None = data.get(entry, None)
-        # print(entry, res)
-        if res is None:
+def parse_test(data: dict[int, ShoppingItem], indent:int = 0):  # noqa: ANN201, D103
+     for key in data:
+        # print("Key", key)
+        value = data.get(key)
+        if value is None:
             continue
-        # if res["marketboard"] is None:
-        #     print("No MB", entry)
-        entries.append(res)
-    # entries: list[ShoppingCurrency] = [data.get(entry) for entry in data if data.get(entry) is not None]
-    for item in sorted(entries, key=lambda x: x["marketboard"].regular_sale_velocity):
-        if item is None:
-            continue
-        # print("Got Shopping Data", type(shopping))
-        mb: CurrentData | HistoryData | None = item["marketboard"]
-        if mb is None:
-            continue
-        timestamp: str | int = (
-            mb.last_upload_time.strftime("%d/%m | %H:%M(%Z)") if isinstance(mb.last_upload_time, datetime.datetime) else mb.last_upload_time
-        )
-        temp: str = (
-            f"Name: {mb.name}[{mb.item_id}] | Timestamp: {timestamp} | Sale Velocity: {mb.regular_sale_velocity} | "
-            f"Avg Price Cur({mb.current_average_price}) | Hist({mb.average_price}) | Min({mb.min_price}) | Currency Cost: {item['cost']} | "
-            f"PPU/Currency: {mb.min_price / item['cost']:2f}"
-        )
-        # print("Appending Data")
-        output.append(temp)
 
-    return output
-
-
-# def sorted_dict(entries: dict[int, ShoppingCurrency]):
-#     for item_id, data in entries.items():
-
-
-async def dev_test() -> None:
-    moogle: Moogle = await Moogle().build()
-    await makeplace_housing(moogle)
-    await moogle.clean_up()
-    pass
-
-
-# Attempting to create a full list of items to finish a "MakePlace" build.
-async def makeplace_housing(moogle: Moogle) -> None:
-    """Co-routine to run development tests."""
-    # moogle: Moogle = await Moogle().build()
-    stime = time()  # don't remove this line.
-    mp_data: MakePlaceData = load_data_from_file(Path("./local_data/Kat House.json"), is_json=True)  # pyright: ignore[reportAssignmentType]
-    atools_data: str = load_data_from_file(Path("./local_data/8.25.2025.csv"), encoding="utf-8-sig")  # pyright: ignore[reportAssignmentType]
-
-    res: list[Item] = await moogle.makeplace_create_itemlist(makeplace_data=mp_data, atools_data=atools_data)
-
-    output: list[str] = []
-    # TODO: Maybe count all currency's?
-    # Marketboard Gil will by default have an ID of 0.
-    # Non-MB Gil will be ID of 1
-    currencies: dict[int, int] = {0: 0, 1: 0}
-    output.append(f"# MakePlace Shopping List:")
-    output.append("*Note*: Marketboard Total includes Tax. *(mb listing count * price per unit + tax)*\n")
-    output.append(f"__[TeamCraft List URL]({moogle.teamcraft_list(res)})__")
-    output.append((f"\n- Total # of Items: {len(res)}\n----"))
-    for item in res:
-        # This is the finished item section..
-        output.append(f"## __[{item.name}]({item.garland_tools_url})__ [{item.id}]")
-        # TODO(@k8thekat): Handle items not craftable; but still tradeable or purchasable from a Vendor/etc.
-        # See "A Knight to Remember [13289] as an example."
-        if item.recipe is not None:
-            data: dict[int, Crafting] | None = await item.recipe.get_crafting_cost()
-            output.append(f"- Total # of Ingredients: {len(data)}")
-            # These are all the ingredients; so we should see a count.
-            for entry in data:
-                value: Crafting | None = data.get(entry, None)
-                data_item = value.get("item")
-
-                # Ingredient Information, Name, URL, ID and Count
-                output.append(f"### __[{data_item.name}]({data_item.garland_tools_url})__ [{data_item.id}] ")
-                output.append(f"> Count: {value.get('count')}\n")
-                # Ingredient info cont...
-                # Marketboard/Universalis Info.
-                marketboard: CurrentData | None = value.get("marketboard", None)
-                if marketboard is None:
-                    output.append("#### **Marketboard**: N/A")
-                else:
-                    market_listing: CurrentDataEntries = sorted(marketboard.listings, key=lambda x: x.price_per_unit)[0]
-                    currencies[0] += market_listing.tax + market_listing.total
-                    # TODO(@k8thekat): Improve timestamp display, show date and time as UTC.
-                    output.append(f"#### **Marketboard**: [{market_listing.last_review_time.date()}]")
-                    output.append(
-                        f"> World/DC: {market_listing.world_name}/{market_listing.dc_name} | PPU | Listing Count: {market_listing.price_per_unit} | [{market_listing.quantity}] | Total: {market_listing.tax + market_listing.total}"
-                    )
-
-                # Vendors info...
-                vendors: list[Vendor] | None = value.get("vendors", None)
-                if vendors is None:
-                    output.append("#### **Vendors**: N/A")
-                else:
-                    vendor_cur_flag = True
-                    for cur_vendor in vendors:
-                        output.append(
-                            f"#### **Vendor**: [{cur_vendor.get('name')} | {cur_vendor.get('shop_name')}]({cur_vendor.get('url', 'N/A')})"
-                        )
-                        currency: Item | None = cur_vendor.get("currency")
-                        price = cur_vendor.get("price", 0)
-                        if currency is not None:
-                            output.append(f"> Currency: {currency.name} | Cost: {price} | ")
-                            if vendor_cur_flag is True:
-                                currencies[currency.id] += price
-                                vendor_cur_flag = False
-                        else:
-                            output.append(f"> Currency: Gil | Cost: {price}")
-                            if vendor_cur_flag is True:
-                                currencies[1] += price
-                                vendor_cur_flag = False
-
-                # Tradeshop Info...
-                tradeshops: list[Vendor] | None = value.get("tradeshops", None)
-                if tradeshops is None:
-                    output.append("#### **TradeShops**: N/A")
-                else:
-                    shop_cur_flag = True
-                    for cur_shop in tradeshops:
-                        output.append(
-                            f"#### **TradeShop**: [{cur_shop.get('name')} | {cur_shop.get('shop_name')}]({cur_shop.get('url', 'N/A')})"
-                        )
-                        currency: Item | None = cur_shop.get("currency")
-                        price = cur_shop.get("price", 0)
-                        if currency is not None:
-                            output.append(f"> Currency: {currency.name} | Cost: {price} | ")
-                            if shop_cur_flag is True:
-                                currencies[currency.id] += price
-                                shop_cur_flag = False
-                        else:
-                            output.append(f"> Currency: Gil | Cost: {price}")
-                            if shop_cur_flag is True:
-                                currencies[1] += price
-                                shop_cur_flag = False
-        output.append("\n")
-    output.append("---")
-    for entry in currencies:
-        val = currencies.get(entry)
-        if entry == 0:
-            output.append(f"**Total Marketboard Gil**: {val:,d}\n")
-        elif entry == 1 and val > 0:
-            output.append(f"**Total Vendor Gil**: {val:,d}\n")
+        tabs = "\t"* indent
+        if value.get("ingredients", None) is not None:
+            print(tabs, value["item"].name, value["item"].id, value["count"], "-> Ingredients:")
+            parse_test(data= value["ingredients"], indent=indent + 1)
         else:
-            output.append(f"Currency: {entry} | Count: {val:,d}")
-
-    write_data_to_file(file_name="shopping_list.md", data="\n".join(output))
-    LOGGER.info("Completed local_test() in %s seconds...", format(time() - stime, ".3f"))
+            print(tabs, value["item"].name, value["item"].id, value["count"], "-> No Ingredients")
 
 
-async def build_test() -> None:
-    """|CORO|
+async def currency(moogle: Moogle) -> None:  # noqa: D103
+    currency = Currency.allagan_tomestone_of_poetics
+    world_or_dc = World.Zalera
+    res: dict[int, CurrencySpender] | None = await moogle.currency_spender(
+        currency,
+        patch=Expansion.shadowbringers,
+        world_or_dc=world_or_dc,
+    )
 
-    Tests the FFXIVBuilder class.
+    if res is not None:
+        for entry in res:
+            value = res.get(entry)
+            if value is not None:
+                value["item"] = value["item"].to_json()
+        write_data_to_file(file_name="currency_spender_dump.txt",data=res, path=Path().joinpath("local_data/dumps"))
 
-    Testing the build function,
-    also making sure it can get Fish/Fishing related items, Recipe and gatherable items properly.
-
-    """
-    item_handler: Moogle = await Moogle().build()
-    # Item lookup test.
-    item: Item = item_handler.get_item(item="Angelfish", limit_results=1)  # Angelfish
-    item.level_item
-    print(item)  # noqa:
-
-    # Fishing Item test
-    # This is to check the types of Fish vs SpearFishing
-    print(type(item.fishing))
-    print(item.fishing)
-
-    # FF14 Angler Test...
-    data: Optional[AnglerFish] = await item.fishing.get_angler_data()
-    print(data)
-    print(data.best_bait())
-
-    # Recipe Item Test
-    item: Item = item_handler.get_item(item="27300")  # Titania Shadow Box
-    print(item)
-    print(item.recipe)
-
-    # Gathering Item Test
-    item: Item = item_handler.get_item(item="36164")  # Bismuth Ore
-    print(item)
-    print(item.gathering)
-
-    # Marketboard Test
-    await item_mb_test(item="27300")
+        # write_data_to_file(
+        #     file_name=f"{currency.name}_{world_or_dc.name}.txt",
+        #     data=Converter.parse_shopping_data(res),
+        #     path=Path().joinpath("local_data/dumps"),
+        # )
 
 
-async def item_mb_test(item: str) -> Item | list[Item]:
-    """Co-routine"""
-    item_handler = await Moogle().build()
+async def dev_test() -> None:  # noqa: D103
     stime = time()
-    items: list[Item] = item_handler.get_item(item=item)
+    moogle: Moogle = await Moogle().build(ignore_validation=True)
+    item = moogle.get_item("10373", limit_results=1)
+    print(item.name)
+    print(item.recipe)
+    if item.recipe is not None:
+        print(len(item.recipe))
+        for job in item.recipe:
+            res = await job.get_crafting_cost()
+            print(res)
+            if res is not None:
+                print(Converter.parse_crafting_cost(res, recipe_item=item))
+    # mp_data: MakePlaceData = load_data_from_file(Path("./local_data/Kat House.json"), is_json=True)  # pyright: ignore[reportAssignmentType]
+    # atools_data: str = load_data_from_file(Path("./local_data/8.25.2025.csv"), encoding="utf-8-sig")  # pyright: ignore[reportAssignmentType]
+    # items = await moogle.makeplace_create_itemlist(makeplace_data=mp_data, atools_data=atools_data)
+    # res = await moogle.makeplace_housing(items=items)
+    # output = moogle._parse_makeplace_shopping(res)
+    # if output is None:
+    #     print("FAILURE")
+    #     return
+    # write_data_to_file(file_name="shopping_list.md", data="\n".join(output))
+    # file = Path(__file__).parent.joinpath("local_data/xiv_dye_sheet.csv")
+    # csv_parse(file)
+    LOGGER.info("Completed dev_test() in %s seconds...", format(time() - stime, ".3f"))
+    await moogle.clean_up()
 
-    print(len(items))
-    if isinstance(items, list):
-        for entry in items:
-            print(entry.name, entry.id)
-            print(entry.recipe)
-            print(entry.get_current_marketboard())
-    LOGGER.info("Completed item_name search in %s seconds...", format(time() - stime, ".3f"))
-    return items
 
+async def _request(url: str, session: Optional[aiohttp.ClientSession] = None, auto_close: bool = True, raw_bytes: bool = False) -> Optional[bytes | dict[Any, Any]]: # pyright: ignore[reportUnusedFunction]  # noqa: FBT001, FBT002
+    if session is None:
+        session = aiohttp.ClientSession()
+
+    res: aiohttp.ClientResponse = await session.get(url=url)
+    if res.status != 200:
+        LOGGER.error("<%s._request> failed to access the url. | Status Code: %s | URL: %s", __file__, res.status, url)
+        return None
+        # raise ConnectionError("Unable to access the url: %s", url)
+    if raw_bytes:
+        data = await res.content.read()
+    else:
+        data = await res.json()
+    if auto_close:
+        await session.close()
+    return data
+
+def csv_parse(file: Path) -> Any:  # noqa: D103
+    with file.open(mode="r", encoding="utf-8") as csv_file:
+        column_keys = csv_file.readline()[0:-1].split(",")
+        data = csv.DictReader(csv_file, fieldnames=column_keys)
+        res = {}
+        for row in data:
+            # print(row)
+            # if row["Color"] == "":
+            #     continue
+            res[row["##"]] = row["Name"]
+            # print(f'{row["##"]} = "{row["Name"].replace(" ", "_")}"')
+            print(f'{row["Name"].replace(" ", "_")} = "{row["##"][:-2]}"')
+
+
+async def time_validation(func: Callable[..., Coroutine[Any, Any, Any]]) -> Any:  # noqa: D103
+    stime = time()
+    if asyncio.iscoroutinefunction(func):
+        var = await func()
+    else:
+        var = func()
+
+    LOGGER.info("Completed local_test() in %s seconds...", format(time() - stime, ".3f"))
+    return var
 
 def ini_load(file: Path, section: str, options: list[str]) -> list[str | None]:
     """Parse an ini file.
@@ -474,7 +381,7 @@ stime: float = time()
 if _parsed_args.upgrade:
     LOGGER.info("Running uv sync upgrade. | Package: %s", _parsed_args.upgrade)
     # subprocess.run(["uv" , "sync", "-n" ,"--upgrade-package",_parsed_args.upgrade], check=False)
-    subprocess.run([f"uv sync -n --upgrade-package {_parsed_args.upgrade}"], check=False, shell=True)  # noqa: S602
+    subprocess.run([f"uv sync -n -P {_parsed_args.upgrade}"], check=False, shell=True)  # noqa: S602
     LOGGER.info("Completed in %s seconds...", format(time() - stime, ".3f"))
 
 if _parsed_args.local:

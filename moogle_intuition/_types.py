@@ -26,8 +26,8 @@ if TYPE_CHECKING:
     # import datetime
 
     from async_universalis import DataCenter, UniversalisAPI, World
-    from ff14angler import Angler
 
+    from .ff14angler import Angler
     from .modules import Currency, Item, Moogle
 
 
@@ -77,6 +77,18 @@ class GatheringData(TypedDict):
     gathering_item_level: int  # GatheringItemLevelConvertTable
     quest: bool  # Quest
     is_hidden: int
+
+
+class PartialItemData(TypedDict):
+    id: int
+    name: str
+    singular: NotRequired[str]
+    icon: NotRequired[int | str]
+    description: NotRequired[str]
+    is_untradeable: NotRequired[bool]
+    stack_size: NotRequired[int]
+    level_item: NotRequired[int]
+    item_ui_category: NotRequired[int]
 
 
 class ItemData(TypedDict):

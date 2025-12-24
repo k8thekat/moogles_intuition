@@ -24,8 +24,8 @@ classifiers = [
 ]
 keywords = ["moogle_intuition", "ffxiv", "datamining", "universalis", "garland tools"]
 dependencies = [
-    "async-garlandtools",
-    "async-universalis",
+    "async-garlandtools>=1.4.1",
+    "async-universalis>=5.0.1-dev",
     "beautifulsoup4>=4.13.4",
     "thefuzz>=0.22.1",
 ]

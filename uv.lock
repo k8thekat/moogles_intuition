@@ -114,12 +114,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/ce/ca/0413e9c62ee1b1a40
 
 [[package]]
 name = "async-universalis"
-version = "5.0.0.dev0"
+version = "5.0.1.dev0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c2/49/9772eded12a9733e86fd302119c5b53688e9e6dce656112b774ef03f3d5a/async_universalis-5.0.0.dev0.tar.gz", hash = "sha256:2ad4e6acf8f60a4f2205763f458b4086a1f912c3bfbff1d06b406b7a0eab89ff", size = 1500360, upload-time = "2025-11-10T01:37:31.938Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ef/4e/5530678a8e1135058946b6928c7102b37d05d533d3d521c61255716f296d/async_universalis-5.0.1.dev0.tar.gz", hash = "sha256:3e4aadd0238611ecdad42535f1b59e379c8022868148e631206b97d3df2dd772", size = 1500370, upload-time = "2025-12-24T22:18:10.777Z" }
 
 [[package]]
 name = "attrs"
@@ -233,8 +233,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "async-garlandtools" },
-    { name = "async-universalis" },
+    { name = "async-garlandtools", specifier = ">=1.4.1" },
+    { name = "async-universalis", specifier = ">=5.0.1.dev0" },
     { name = "beautifulsoup4", specifier = ">=4.13.4" },
     { name = "thefuzz", specifier = ">=0.22.1" },
 ]

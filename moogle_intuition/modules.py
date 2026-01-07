@@ -312,9 +312,12 @@ class Object:
 
     def to_json(self) -> dict[str, DataTypeAliases]:
         """Returns the `Object` in JSON format."""
+        _id = "0"
+        value = self._raw
         if hasattr(self, "id"):
-            return {f"{self.id}": self._raw}
-        return {"0": self._raw}
+            _id = str(self.id)
+
+        return {_id: value}
 
     def __repr__(self) -> str:
         try:
@@ -372,6 +375,8 @@ class Generic:
     _fish_params_ref: dict[str | int, str | int]
     "Useful for Item ID -> Fishing Info ID. `item_id[int]` : `fish_parameter_id[str]`"
     _fishing_spot: dict[str, DataTypeAliases]
+    _fishing_spots_ref: dict[str, list[int]]
+    "Useful for Item ID -> Fishing Spot's array. `item_id[int]` : `[fishing_spots[int], ... ]`"
 
     # Spearfishing Related
     _spearfishing_items: dict[str, DataTypeAliases]
@@ -1193,6 +1198,71 @@ class Builder(Generic):
         )
         return item_dict
 
+    def _reference_dict_via_key(
+        self,
+        data: dict[str, DataTypeAliases],
+        key: str,
+        value_get: list[str] | str,
+        *,
+        ref_dict: Optional[dict[str, list[int]]] = None,
+    ) -> dict[str, list[int]]:
+        """Create a reference :class:`dict` with a preset `key` and `value_get` to fetch
+        from the provided data in an array attached to the `key` provided.
+
+        .. note::
+            `key = "5040"` | results = `{ key : [data.get(value_get[0]), data.get(value_get[1]), ...]}`
+
+
+
+        Parameters
+        ----------
+        data: :class:`dict[str, DataTypeAliases]`
+            Your array of data to parse, no `key` validation is done regarding the entries inside the `value_get` parameter.
+        key: :class:`str`
+            The `key` for the return results `dict[key]` and the value to compare `value_get` results to.
+            - This value will be converted to an :class:`int` when comparing to the results of `data.get(value_get[0])`.
+        value_get: :class:`list[str] | str`
+            A :class:`str` or an array of :class:`str` to call `data.get(value_get)` with, if the `key` doesn't exist in the `data` set it
+            will make an empty :class:`list` with the `key` parameter as the key.
+        ref_dict: :class:`Optional[dict[str, list[int]]]`, optional
+            Supply a pre-existing :class:`dict` to expand.
+
+        Returns
+        -------
+        :class:`dict[str, list[int]]`
+            _description_.
+
+        """  # noqa: D205
+        ref: dict[str, list[int]] = {}
+        if ref_dict is not None:
+            ref = ref_dict
+        # k is the fishing_spot ID in this use case.
+        if isinstance(value_get, str):
+            value_get = list(value_get)
+
+        for k, value in data.items():
+            for v_entry in value_get:
+                # get("item0"), get("item1"), ...
+                res = value.get(v_entry, None)
+                # If the value we got from our keys matches the "key" we are wanting.
+                # We may need to not force `int` comparison here in the future.
+                if isinstance(res, int) and res == int(key):
+                    # We want to get a pre-existing entry from our `ref` dict if it exists, otherwise we create an array.
+                    cur_ref: list[int] = ref.get(key, [])
+                    if int(k) not in cur_ref:
+                        cur_ref.append(int(k))
+                    # Update our ref dic with the (new) array.
+                    ref.update({key: cur_ref})
+                    break
+
+        return ref
+
+        # for entry in fishing_spot.items():
+        # get `itemX`; see if it's in our dict.
+        # Append `fishing_spot_id` if it exists, else add and update..
+        # pass
+        # return self._reference_dict(data, key, flip_key_value=True)
+
 
 class Moogle(Generic):
     """Our handler type class for interacting with FFXIV Items, Recipes and other Data structures from XIV Datamining."""
@@ -1396,6 +1466,17 @@ class Moogle(Generic):
             flip_key_value=True,
         )
         self._fishing_spot = self._builder._load_json(path=DATA_PATH.joinpath("fishing_spot.json"))
+        self._fishing_spots_ref = {}
+        # "This handles building all the 'Fishable' items into an array with their
+        # fishing spot IDs as values and the keys being the `item_id`."
+        for item_id in self._fish_params_ref:
+            res: dict[str, list[int]] = self._builder._reference_dict_via_key(
+                data=self._fishing_spot,
+                key=str(item_id),
+                value_get=[f"item{x}" for x in range(10)],
+                ref_dict=self._fishing_spots_ref,
+            )
+            self._fishing_spots_ref.update(res)
 
         # Spearfishing related dict/JSON
         self._spearfishing_items = self._builder._load_json(path=DATA_PATH.joinpath("spearfishing_item.json"))
@@ -2069,6 +2150,9 @@ class Item(Object):
     _mb_current: Optional[CurrentData]
     _mb_history: Optional[HistoryData]
 
+    # External data
+    #_external: External()
+
     id: int
     icon: int
     "Icon ID, can be used in place for :class:`GarlandToolsAsync.icon()`"
@@ -2418,33 +2502,41 @@ class Item(Object):
 
         Returns
         -------
-        :class:`ItemResponse`
-            A JSON response structred as :class:`ItemResponse`.
+        :class:`Optional[ItemResponse]`
+            A JSON response structured as :class:`ItemResponse` if applicable;
+            otherwise `None` if a :class:`GarlandToolsRequestError` or :class:`GarlandToolsKeyError` occurs.
 
         """
         try:
             self._garlandtools_data = await self._moogle._garlandtools.item(item_id=self.id)
-        except GarlandToolsKeyError:
+        except (GarlandToolsKeyError, GarlandToolsRequestError):
             LOGGER.warning("<%s.%s> | Failed to get GarlandTools Data. | Item: %s", __class__.__name__, "get_garlandtools_data", self.id)
             return None
         return self._garlandtools_data
 
-    async def get_icon(self) -> Optional[GTObject]:
+    async def get_icon(self, *, icon_type: IconType = IconType.item) -> Optional[GTObject]:
         """Fetches GarlandTools Icon data, if applicable.
+
+        Parameters
+        ----------
+        icon_type: :class:`IconType`
+            The "type" or "category" of icon the `icon_id` belongs to,
+            such as an item having it's category be `IconType.item`; default is `IconType.item`.
 
         Returns
         -------
         :class:`Optional[GTObject]`
-            A GarlandTools API Object.
+            A GarlandTools API Object, if applicable;
+            otherwise `None` if a :class:`GarlandToolsRequestError` or :class:`GarlandToolsKeyError` occurs.
 
         """
         if self._icon_data is not None:
             return self._icon_data
 
         try:
-            res: GTObject = await self._moogle._garlandtools.icon(icon_id=self.icon, icon_type=IconType.item)
+            res: GTObject = await self._moogle._garlandtools.icon(icon_id=self.icon, icon_type=icon_type)
             self._icon_data = res
-        except GarlandToolsRequestError:
+        except (GarlandToolsKeyError, GarlandToolsRequestError):
             LOGGER.warning("<%s.%s> | Failed to get GarlandTools Icon data. | Item: %s", __class__.__name__, "get_icon", self.id)
             return None
         return res
@@ -2873,7 +2965,7 @@ class Recipe(Object):
     is_expert: bool
 
     # _ingredients: list[Item]
-    _iter = 0
+    # _iter = 0
 
     __slots__ = (
         "amount_ingredient0",
@@ -3256,7 +3348,7 @@ class Fishing(Fish):
     ocean_stars: int
     is_hidden: bool
     fishing_spot_id: int
-    _fishing_spot: Optional[FishingSpot]
+    _fishing_spots: Optional[list[FishingSpot]]
 
     __slots__ = (
         # "fishing_spot",
@@ -3299,7 +3391,7 @@ class Fishing(Fish):
 
         self.item: Item = item
 
-    def _get_fishing_spot(self, spot_id: int) -> FishingSpot:
+    def _get_fishing_spot_byid(self, spot_id: int) -> FishingSpot:
         LOGGER.debug(
             "<%s.%s> | Searching... spot_id: %s | entries: %s",
             __class__.__name__,
@@ -3313,15 +3405,47 @@ class Fishing(Fish):
             raise MoogleLookupError(str(spot_id), "spot_id", "_get_fishing_spot", self)
         return FishingSpot(data=data, item=self.item, moogle=self._moogle)
 
+    def _get_fishing_spots(self) -> list[FishingSpot]:
+        LOGGER.debug(
+            "<%s.%s> | Getting all Fishing Spots for Item ID: %s | entries: %s",
+            __class__.__name__,
+            "_get_fishing_spot",
+            self.item_id,
+            len(self._moogle._fishing_spots_ref),
+
+        )
+        data: Optional[list[int]] = self._moogle._fishing_spots_ref.get(str(self.item_id), None)
+        if data is None or len(data) < 0:
+            raise MoogleLookupError(str(self.item_id), "fishing_spot_id", "_get_fishing_spots", self)
+        return [self._get_fishing_spot_byid(entry) for entry in data]
+
     @property
-    def fishing_spot(self) -> Optional[FishingSpot]:
-        """The fishing spot the :class:`Fishing` belongs to."""
+    def fishing_spots(self) -> Optional[list[FishingSpot]]:
+        """The fishing spots the :class:`Fishing` belongs to."""
         try:
-            self._fishing_spot = self._get_fishing_spot(self.fishing_spot_id)
+            self._fishing_spots = self._get_fishing_spots()
         except MoogleLookupError:
-            LOGGER.warning("<%s> | Failed to find Fishing spot id. | ID: %s", __class__.__name__, self.fishing_spot_id)
-            self._fishing_spot = None
-        return self._fishing_spot
+            LOGGER.warning("<%s> | Failed to find all Fishing spots for Item. | ID: %s", __class__.__name__, self.item_id)
+            self._fishing_spots = None
+        return self._fishing_spots
+
+
+    def __iter__(self) -> Iterator[FishingSpot]:
+        """Yields a :class:`FishingSpot` object for the :class:`Fishing` object from `self.fishing_spots`."""
+        _iter = 0
+        if self.fishing_spots is None:
+            raise StopIteration from IndexError
+        while _iter <= len(self.fishing_spots) - 1:
+            try:
+                yield self.fishing_spots[_iter]
+                _iter += 1
+            except IndexError:
+                raise StopIteration from IndexError
+
+    def __len__(self) -> int:  # noqa: D105
+        if self.fishing_spots is None:
+            return 0
+        return len(self.fishing_spots)
 
 
 class SpearFishing(Fish):
@@ -3789,7 +3913,8 @@ class Gathering(Object):
         -------
         :class:`list[GatheringNode] | None`
             A list of :class:`GatheringNode` to access information related to the gathering node location,
-            otherwise will return `None` if :class:`Item.garlandtools_data` is `None`.
+            otherwise will return `None` if :class:`Item.garlandtools_data` is `None`,
+            if the response raises a :class:`GarlandToolsKeyError` or if the response raises a :class:`GarlandToolsRequestError`.
 
         """
         # Force re-fetching of data
@@ -3815,7 +3940,7 @@ class Gathering(Object):
                 return self._nodes
             try:
                 res: NodeResponse = await self._moogle._garlandtools.node(node_id=node)
-            except GarlandToolsKeyError:
+            except (GarlandToolsKeyError, GarlandToolsRequestError):
                 LOGGER.warning("<%s.%s> | Unable to get GarlandTools Node Info. | ID: %s", __class__.__name__, "get_Gathering_nodes", node)
                 return None
             self._nodes.append(GatheringNode(data=res["node"], gathering=self, moogle=self._moogle))

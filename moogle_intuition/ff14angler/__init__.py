@@ -871,6 +871,7 @@ class AnglerFish(PartialAngler):
 
     # I am supplying this value only to make it easier when you have this class by itself.
     spot: Optional[dict[str, dict[str, int]]]
+    _area_name: Optional[str]
 
     item_id: int
     fish_name: str
@@ -909,9 +910,9 @@ class AnglerFish(PartialAngler):
     @property
     def area_name(self) -> Optional[str]:
         """Returns the Parent Area name if applicable."""
-        if self.spot is not None:
-            return next(iter(self.spot))
-        return None
+        return self._area_name
+
+
 
     def __init__(self, item_id: int, data: FishingData, spot: Optional[dict[str, dict[str, int]]] = None) -> None:
         """Build your :class:`AnglerFish` object.
@@ -930,8 +931,22 @@ class AnglerFish(PartialAngler):
         super().__init__(data=data)
         self.item_id = item_id
         self.spot = spot
+        if spot is not None:
+            self._area_name = next(iter(spot))
+        else:
+            self._area_name = None
         self.baits = {}
-        self._repr_keys = ["fish_name", "item_id", "spot", "hook_time", "restrictions", "baits"]
+        self._repr_keys = [
+            "fish_name",
+            "item_id",
+            "sub_area_name",
+            "sub_area_id",
+            "area_name",
+            "area_id",
+            "hook_time",
+            "restrictions",
+            "baits",
+        ]
         for key, value in data.items():
             if key.lower() == "baits" and isinstance(value, dict):
                 for k, v in value.items():  # type: ignore[reportUnkownVariableType]
@@ -940,6 +955,7 @@ class AnglerFish(PartialAngler):
 
             else:
                 setattr(self, key, value)
+
 
     def best_bait(self) -> Optional[AnglerBaits]:
         """Retrieves the optimal chance Fishing bait related to the `<AnglerFish.location_name>` class.

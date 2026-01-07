@@ -14,6 +14,8 @@ Additional features and or integration with other platforms.
 
 ## MakePlace
 - If the item is a raw ingredient; we should deduct the ingredients from the wanted Items.
+- Add function to take an `Inventory` from say AllaganTools or similar; and deduct the `Items` recipe cost from that supplied Inventory.
+    - Return updated `Inventory` and also return a needed/remaining `Inventory` along with a deducted `Inventory` count.
 
 
 ## GarlandTools Parsing

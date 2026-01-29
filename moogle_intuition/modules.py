@@ -270,6 +270,21 @@ DATA_URLS: dict[str, tuple[str, str]] = {
 }
 
 
+class External:
+    _garlandtools_data: Optional[ItemResponse]
+    "For GarlandToolsAsync API data"
+    _icon_data: Optional[GTObject]
+    "For GarlandToolsAsync Icon data"
+
+    _mb_current: Optional[CurrentData]
+    "For Universalis Marketboard Current data"
+    _mb_history: Optional[HistoryData]
+    "For Universalis Marketboard History data"
+
+    _angler_data: Optional[list[AnglerFish]]
+    "For FF14Angler Website data"
+
+
 class Object:
     """Our Base object class for FFXIV related object handling."""
 
@@ -278,6 +293,8 @@ class Object:
     _moogle: Moogle
     # _universalis: Optional[UniversalisAPI]
     # _angler: Optional[Angler]
+
+    _external: External
 
     # A simple ref dict to map the repair Item to the Key.
     _item_repair: ClassVar[dict[int, int]] = {
@@ -305,6 +322,7 @@ class Object:
         """
         self._moogle = moogle
         self._raw = data
+        self._external = External()
         LOGGER.debug("<%s.__init__()> | ID: %s | data: %s", __class__.__name__, id(self), data)
 
     def __str__(self) -> str:
@@ -337,6 +355,19 @@ class Object:
             return f"\n\n__{self.__class__.__name__}__\n" + "\n".join([
                 f"{e}: {getattr(self, e)}" for e in sorted(self.__dict__) if e.startswith("_") is False
             ])
+
+    @property
+    def external(self) -> External:
+        """Houses all externally obtained data; could be Universalis, GarlandTools, etc type JSON data.
+
+        Returns
+        -------
+        :class:`External`
+            An object with attributes related to any external data.
+
+        """
+        return self._external
+
 
 
 class Generic:
@@ -1339,6 +1370,7 @@ class Moogle(Generic):
             self._angler = angler
 
         self._builder = Builder(session=session)
+
         # Create our empty itemcache.
         self._items_cache = {}
 
@@ -2135,7 +2167,7 @@ class Item(Object):
 
     """
 
-    _ff14angler_data: Any
+    # _ff14angler_data: Any
     _recipe: Optional[JobRecipe]
     _fishing: Optional[Fishing]
     _spear_fishing: Optional[SpearFishing]
@@ -2151,7 +2183,7 @@ class Item(Object):
     _mb_history: Optional[HistoryData]
 
     # External data
-    #_external: External()
+    # _external: External()
 
     id: int
     icon: int
@@ -2211,7 +2243,7 @@ class Item(Object):
         self._repr_keys = ["id", "name"]
         self.description = None
 
-        self._icon_data = None
+        self._external._icon_data = None
 
         for key in self.__slots__:
             value: Optional[int | bool | str] = data.get(key, None)
@@ -2348,7 +2380,7 @@ class Item(Object):
     def mb_current(self) -> Optional[CurrentData]:
         """Cached current marketboard data, if applicable."""
         try:
-            return self._mb_current
+            return self._external._mb_current
         except AttributeError:
             return None
 
@@ -2356,7 +2388,7 @@ class Item(Object):
     def mb_history(self) -> Optional[HistoryData]:
         """Cached history marketboard data, if applicable."""
         try:
-            return self._mb_history
+            return self._external._mb_history
         except AttributeError:
             return None
 
@@ -2442,7 +2474,7 @@ class Item(Object):
 
         """
         try:
-            self._mb_current = await self._moogle._universalis.get_current_data(item=self.id, **kwargs)
+            self._external._mb_current = await self._moogle._universalis.get_current_data(item=self.id, **kwargs)
         except UniversalisError:
             LOGGER.error(
                 "<%s.%S> | Failed to get Universalis Current Marketboard data | Item: %s",
@@ -2451,7 +2483,7 @@ class Item(Object):
                 self.id,
             )
             return None
-        return self._mb_current
+        return self._external._mb_current
 
     async def get_history_marketboard(self, **kwargs: Unpack[HistMarketBoardParams]) -> Optional[HistoryData]:
         """Retrieve the Marketboard History data for this item, while also setting the `<Item.mb_history>` property.
@@ -2468,7 +2500,7 @@ class Item(Object):
 
         """
         try:
-            self._mb_history = await self._moogle._universalis.get_history_data(item=self.id, **kwargs)
+            self._external._mb_history = await self._moogle._universalis.get_history_data(item=self.id, **kwargs)
         except UniversalisError:
             LOGGER.error(
                 "<%s.%S> | Failed to get Universalis History Marketboard data | Item: %s",
@@ -2477,7 +2509,7 @@ class Item(Object):
                 self.id,
             )
             return None
-        return self._mb_history
+        return self._external._mb_history
 
     @property
     def garlandtools_data(self) -> Optional[ItemResponse]:
@@ -2493,7 +2525,7 @@ class Item(Object):
 
         """
         try:
-            return self._garlandtools_data
+            return self._external._garlandtools_data
         except AttributeError:
             return None
 
@@ -2508,11 +2540,11 @@ class Item(Object):
 
         """
         try:
-            self._garlandtools_data = await self._moogle._garlandtools.item(item_id=self.id)
+            self._external._garlandtools_data = await self._moogle._garlandtools.item(item_id=self.id)
         except (GarlandToolsKeyError, GarlandToolsRequestError):
             LOGGER.warning("<%s.%s> | Failed to get GarlandTools Data. | Item: %s", __class__.__name__, "get_garlandtools_data", self.id)
             return None
-        return self._garlandtools_data
+        return self._external._garlandtools_data
 
     async def get_icon(self, *, icon_type: IconType = IconType.item) -> Optional[GTObject]:
         """Fetches GarlandTools Icon data, if applicable.
@@ -2530,12 +2562,12 @@ class Item(Object):
             otherwise `None` if a :class:`GarlandToolsRequestError` or :class:`GarlandToolsKeyError` occurs.
 
         """
-        if self._icon_data is not None:
-            return self._icon_data
+        if self._external._icon_data is not None:
+            return self._external._icon_data
 
         try:
             res: GTObject = await self._moogle._garlandtools.icon(icon_id=self.icon, icon_type=icon_type)
-            self._icon_data = res
+            self._external._icon_data = res
         except (GarlandToolsKeyError, GarlandToolsRequestError):
             LOGGER.warning("<%s.%s> | Failed to get GarlandTools Icon data. | Item: %s", __class__.__name__, "get_icon", self.id)
             return None
@@ -2964,9 +2996,6 @@ class Recipe(Object):
     is_specialization_required: int
     is_expert: bool
 
-    # _ingredients: list[Item]
-    # _iter = 0
-
     __slots__ = (
         "amount_ingredient0",
         "amount_ingredient1",
@@ -3142,6 +3171,16 @@ class Recipe(Object):
 
         return results
 
+    @property
+    def total_ingredient_quantity(self) -> int:
+        """The cummilative total of every ingredient and it's quantity."""
+        val = 0
+        for item, quantity in self:
+            if item.recipe is not None:
+                val += item.recipe[0].total_ingredient_quantity
+                continue
+            val += quantity
+        return val
 
 class Fish(Object):
     """Generic base object for handling FF14 Angler data and FFXIV item information.
@@ -3287,17 +3326,17 @@ class Fish(Object):
                     best = fish
 
         if best_chance is True:
-            self._angler_data = data
+            self._external._angler_data = data
             return best
 
-        self._angler_data = data
+        self._external._angler_data = data
         return data
 
     @property
     def angler_data(self) -> Optional[list[AnglerFish]]:
         """Houses the FF14Angler information retrieved from :class:`Self.get_angler_data()`."""
         try:
-            return self._angler_data
+            return self._external._angler_data
         except AttributeError:
             return None
 
@@ -3314,6 +3353,10 @@ class Fishing(Fish):
 
     .. note::
         Inherits attributes from :class:`Fish`.
+
+    .. note::
+        Supports iteration to yield a :class:`FishingSpot` object related to the :class:`Item`.
+        - You can also access the array via `Fishing().fishing_spot`.
 
 
     Attributes
@@ -3338,7 +3381,7 @@ class Fishing(Fish):
         Houses the FF14Angler data retrieved by :class:`Self.get_angler_data()`.
     angler_url: :class:`str`
         The FF14Angler website url for the Fish.
-    fishing_spot: :class:`Optional[FishingSpot]`, optional
+    fishing_spot: :class:`Optional[list[FishingSpot]]`, optional
         The fishing spot the fish belongs to, if applicable.
 
     """
@@ -3412,7 +3455,6 @@ class Fishing(Fish):
             "_get_fishing_spot",
             self.item_id,
             len(self._moogle._fishing_spots_ref),
-
         )
         data: Optional[list[int]] = self._moogle._fishing_spots_ref.get(str(self.item_id), None)
         if data is None or len(data) < 0:
@@ -3428,7 +3470,6 @@ class Fishing(Fish):
             LOGGER.warning("<%s> | Failed to find all Fishing spots for Item. | ID: %s", __class__.__name__, self.item_id)
             self._fishing_spots = None
         return self._fishing_spots
-
 
     def __iter__(self) -> Iterator[FishingSpot]:
         """Yields a :class:`FishingSpot` object for the :class:`Fishing` object from `self.fishing_spots`."""

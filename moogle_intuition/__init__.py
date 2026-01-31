@@ -23,7 +23,7 @@ from __future__ import annotations
 __title__ = "Moogle's Intuition"
 __author__ = "k8thekat"
 __license__ = "GNU"
-__version__ = "3.2.0-dev"
+__version__ = "3.2.1-dev"
 __credits__ = "Universalis, GarlandTools, FF14 Angler and SquareEnix"
 
 from typing import Literal, NamedTuple

@@ -231,44 +231,44 @@ SANITIZED_KEYS: dict[str, str] = {
 LANGUAGE: str = "en"
 BRANCH: str = "master"
 URLS: dict[str, tuple[bool, str]] = {
-    "item": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/Item.csv"),
+    "item": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/Item.csv"),
     # Used as a dict for FFXIVItem.level_item
     "item_level": (
         True,
-        "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemLevel.csv",
+        f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemLevel.csv",
     ),
     "item_search_category": (
         True,
-        "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemSearchCategory.csv",
+        f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemSearchCategory.csv",
     ),
-    "base_params": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/BaseParam.csv"),
-    "recipe": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv{LANGUAGE}//Recipe.csv"),
-    "recipe_lookup": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/RecipeLookup.csv"),
-    "gathering_item": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/GatheringItem.csv"),
+    "base_params": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/BaseParam.csv"),
+    "recipe": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv{LANGUAGE}//Recipe.csv"),
+    "recipe_lookup": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/RecipeLookup.csv"),
+    "gathering_item": (True, f"fhttps://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/GatheringItem.csv"),
     "gathering_item_level": (
         False,
-        "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/GatheringItemLevelConvertTable.csv",
+        f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/GatheringItemLevelConvertTable.csv",
     ),
-    "fish_parameter": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/FishParameter.csv"),
-    "fishing_spot": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/FishingSpot.csv"),
-    "spearfishing_item": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/SpearfishingItem.csv"),
+    "fish_parameter": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/FishParameter.csv"),
+    "fishing_spot": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/FishingSpot.csv"),
+    "spearfishing_item": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/SpearfishingItem.csv"),
     "spearfishing_notebook": (
         True,
-        "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/SpearfishingNotebook.csv",
+        f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/SpearfishingNotebook.csv",
     ),
-    "class_job": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ClassJob.csv"),
-    "class_job_category": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ClassJobCategory.csv"),
-    "place_name": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/PlaceName.csv"),
+    "class_job": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ClassJob.csv"),
+    "class_job_category": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ClassJobCategory.csv"),
+    "place_name": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/PlaceName.csv"),
 }
 
 DATA_URLS: dict[str, tuple[str, str]] = {
-    "item_special_bonus": ("name", "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemSpecialBonus.csv"),
+    "item_special_bonus": ("name", f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemSpecialBonus.csv"),
     "item_repair_resource": (
         "item",
-        "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemRepairResource.csv",
+        f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemRepairResource.csv",
     ),
-    "item_ui_category": ("name", "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemUICategory.csv"),
-    "item_series": ("name", "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemSeries.csv"),
+    "item_ui_category": ("name", f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemUICategory.csv"),
+    "item_series": ("name", f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemSeries.csv"),
 }
 
 

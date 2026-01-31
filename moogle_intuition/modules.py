@@ -228,45 +228,47 @@ SANITIZED_KEYS: dict[str, str] = {
 # Used when getting files and using `Moogle.data_building()`
 # Simply adding the `file_name` key and the remaining fields, the data will be fetched and converted automatically.
 # file_name | convert_pound(bool) | url
+LANGUAGE: str = "en"
+BRANCH: str = "master"
 URLS: dict[str, tuple[bool, str]] = {
-    "item": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/Item.csv"),
+    "item": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/Item.csv"),
     # Used as a dict for FFXIVItem.level_item
     "item_level": (
         True,
-        "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/ItemLevel.csv",
+        "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemLevel.csv",
     ),
     "item_search_category": (
         True,
-        "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/ItemSearchCategory.csv",
+        "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemSearchCategory.csv",
     ),
-    "base_params": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/BaseParam.csv"),
-    "recipe": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/Recipe.csv"),
-    "recipe_lookup": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/RecipeLookup.csv"),
-    "gathering_item": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/GatheringItem.csv"),
+    "base_params": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/BaseParam.csv"),
+    "recipe": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv{LANGUAGE}//Recipe.csv"),
+    "recipe_lookup": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/RecipeLookup.csv"),
+    "gathering_item": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/GatheringItem.csv"),
     "gathering_item_level": (
         False,
-        "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/GatheringItemLevelConvertTable.csv",
+        "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/GatheringItemLevelConvertTable.csv",
     ),
-    "fish_parameter": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/FishParameter.csv"),
-    "fishing_spot": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/FishingSpot.csv"),
-    "spearfishing_item": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/SpearfishingItem.csv"),
+    "fish_parameter": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/FishParameter.csv"),
+    "fishing_spot": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/FishingSpot.csv"),
+    "spearfishing_item": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/SpearfishingItem.csv"),
     "spearfishing_notebook": (
         True,
-        "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/SpearfishingNotebook.csv",
+        "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/SpearfishingNotebook.csv",
     ),
-    "class_job": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/ClassJob.csv"),
-    "class_job_category": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/ClassJobCategory.csv"),
-    "place_name": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/PlaceName.csv"),
+    "class_job": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ClassJob.csv"),
+    "class_job_category": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ClassJobCategory.csv"),
+    "place_name": (True, "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/PlaceName.csv"),
 }
 
 DATA_URLS: dict[str, tuple[str, str]] = {
-    "item_special_bonus": ("name", "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/ItemSpecialBonus.csv"),
+    "item_special_bonus": ("name", "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemSpecialBonus.csv"),
     "item_repair_resource": (
         "item",
-        "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/ItemRepairResource.csv",
+        "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemRepairResource.csv",
     ),
-    "item_ui_category": ("name", "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/ItemUICategory.csv"),
-    "item_series": ("name", "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/master/csv/ItemSeries.csv"),
+    "item_ui_category": ("name", "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemUICategory.csv"),
+    "item_series": ("name", "https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemSeries.csv"),
 }
 
 
@@ -707,7 +709,11 @@ class Builder(Generic):
                     DATA_PATH.mkdir()
                 file_name = key + ".csv"
 
-                res: bytes = await self._request(url=data[1])
+                try:
+                    res: bytes = await self._request(url=data[1])
+                except ConnectionError:
+                    LOGGER.error("<%s.%s> | Failed to access url. | Url: %s",__class__.__name__, "file_validation", data[1])
+                    continue
                 self.write_data_to_file(path=DATA_PATH, file_name=file_name, data=res)
                 await self.csv_to_json(csv_name=file_name, convert_pound=data[0], format_keys=True)
                 LOGGER.debug(
@@ -833,6 +839,20 @@ class Builder(Generic):
         return True
 
     async def _request(self, url: str, **request_options: Unpack[AiohttpRequestOptions]) -> bytes:
+        """A :class:`ClientResponse.get()` function wrapper.
+
+        Parameters
+        ----------
+        url: :class:`str`
+            The url to access.
+
+
+        Raises
+        ------
+        ConnectionError
+            If `ClientResponse.status` != 200.
+
+        """
         if self.session is None:
             if self._session is None:
                 session: aiohttp.ClientSession = aiohttp.ClientSession()
@@ -1460,6 +1480,8 @@ class Moogle(Generic):
         """
         if relocate_data is True:
             self._builder._rebuild_files()
+            # We force a file validation; so we can get all new files and validate.
+            ignore_validation = False
 
         if ignore_validation is False:
             await self._builder.file_validation()

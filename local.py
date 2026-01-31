@@ -13,7 +13,6 @@ import operator
 import pickle
 import subprocess
 import sys
-import time
 from argparse import Namespace
 from configparser import ConfigParser
 from logging.handlers import TimedRotatingFileHandler
@@ -32,18 +31,14 @@ from bs4 import BeautifulSoup
 from bs4.element import Tag
 
 from moogle_intuition import Angler, Currency, Expansion, GatheringNode, Item, Moogle
-from moogle_intuition._types import CurMarketBoardParams, CurrencySpender, ShoppingCurrency, ShoppingItem, Vendor
+from moogle_intuition._types import CurrencySpender, ShoppingItem, Vendor
+from moogle_intuition.ext.allagan_tools._types import RecipeCrafting
 from moogle_intuition.ext.converters import Converter
-from moogle_intuition.ff14angler import AnglerFish, AnglerSoup, CustomTag
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Coroutine  # pyright: ignore[reportUnusedImport]
+    from collections.abc import Callable, Coroutine  # pyright: ignore[reportUnusedImport]
 
-    from async_garlandtools._types import ItemResponse, Node, NodeResponse
-
-    from moogle_intuition._types import CurrencySpender, MakePlaceData, MakePlaceShopping, PlaceNameData
-    from moogle_intuition.ff14angler import AnglerFish
-    from moogle_intuition.modules import InventoryItem
+    from moogle_intuition._types import CurrencySpender
 
 
 local_data_path: Path = Path(__file__).parent.joinpath("moogle_intuition")
@@ -65,40 +60,48 @@ a = [
 ]
 
 
+
+
 b = """<UIForeground>F201F8</UIForeground><UIGlow>F201F9</UIGlow>EXP Bonus:<UIGlow>01</UIGlow><UIForeground>01</UIForeground> +3% <UIForeground>F201F8</UIForeground><UIGlow>F201F9</UIGlow>Duration:<UIGlow>01</UIGlow><UIForeground>01</UIForeground> 30m
 (Duration can be extended to 60m by consuming multiple)"""
 
+
 async def local_test() -> None:
     """Co-routine to run local tests."""
-    moogle: Moogle = await Moogle().build(ignore_validation=True)
-    # res: dict[int, CurrencySpender] | None = await moogle.currency_spender(Currency.serpent_seal, patch=Expansion.shadowbringers, world_or_dc=DataCenter.Crystal)
-    # if res is None:
-    #     return
+    moogle = await Moogle().build(use_v2= True)
+    item = moogle.get_item("Flying Chair", limit_results=1)
+    print(item)
+    await moogle.clean_up()
+
+
+
+async def tradeshop_testing(moogle: Moogle) -> None:  # noqa: D103
     item = moogle.get_item("15855", limit_results=1)
     print(item.name)
     gt_data: ItemResponse | None = await item.get_garlandtools_data()
     if gt_data is not None:
         pprint(gt_data["item"].get("tradeShops"))
     print(item.get_tradeshops())
-    await moogle.clean_up()
+    return
 
-def parse_test(data: dict[int, ShoppingItem], indent:int = 0):  # noqa: ANN201, D103
-     for key in data:
+
+def parse_test(data: dict[int, ShoppingItem], indent: int = 0):  # noqa: ANN201, D103
+    for key in data:
         # print("Key", key)
         value = data.get(key)
         if value is None:
             continue
 
-        tabs = "\t"* indent
+        tabs = "\t" * indent
         if value.get("ingredients", None) is not None:
             print(tabs, value["item"].name, value["item"].id, value["count"], "-> Ingredients:")
-            parse_test(data= value["ingredients"], indent=indent + 1)
+            parse_test(data=value["ingredients"], indent=indent + 1)
         else:
             print(tabs, value["item"].name, value["item"].id, value["count"], "-> No Ingredients")
 
 
 async def currency(moogle: Moogle) -> None:  # noqa: D103
-    currency = Currency.allagan_tomestone_of_poetics
+    currency = Currency.serpent_seal
     world_or_dc = World.Zalera
     res: dict[int, CurrencySpender] | None = await moogle.currency_spender(
         currency,
@@ -107,48 +110,28 @@ async def currency(moogle: Moogle) -> None:  # noqa: D103
     )
 
     if res is not None:
-        for entry in res:
-            value = res.get(entry)
-            if value is not None:
-                value["item"] = value["item"].to_json()
-        write_data_to_file(file_name="currency_spender_dump.txt",data=res, path=Path().joinpath("local_data/dumps"))
-
-        # write_data_to_file(
-        #     file_name=f"{currency.name}_{world_or_dc.name}.txt",
-        #     data=Converter.parse_shopping_data(res),
-        #     path=Path().joinpath("local_data/dumps"),
-        # )
+        write_data_to_file(
+            file_name=f"{currency.name}_{world_or_dc.name}.txt",
+            data=Converter.parse_shopping_data(res),
+            path=Path().joinpath("local_data/dumps"),
+        )
 
 
 async def dev_test() -> None:  # noqa: D103
     stime = time()
     moogle: Moogle = await Moogle().build(ignore_validation=True)
-    item = moogle.get_item("10373", limit_results=1)
-    print(item.name)
-    print(item.recipe)
-    if item.recipe is not None:
-        print(len(item.recipe))
-        for job in item.recipe:
-            res = await job.get_crafting_cost()
-            print(res)
-            if res is not None:
-                print(Converter.parse_crafting_cost(res, recipe_item=item))
-    # mp_data: MakePlaceData = load_data_from_file(Path("./local_data/Kat House.json"), is_json=True)  # pyright: ignore[reportAssignmentType]
-    # atools_data: str = load_data_from_file(Path("./local_data/8.25.2025.csv"), encoding="utf-8-sig")  # pyright: ignore[reportAssignmentType]
-    # items = await moogle.makeplace_create_itemlist(makeplace_data=mp_data, atools_data=atools_data)
-    # res = await moogle.makeplace_housing(items=items)
-    # output = moogle._parse_makeplace_shopping(res)
-    # if output is None:
-    #     print("FAILURE")
-    #     return
-    # write_data_to_file(file_name="shopping_list.md", data="\n".join(output))
-    # file = Path(__file__).parent.joinpath("local_data/xiv_dye_sheet.csv")
-    # csv_parse(file)
+    item = moogle.get_item("Flying Chair", limit_results=1)
+    pprint(item._raw)
     LOGGER.info("Completed dev_test() in %s seconds...", format(time() - stime, ".3f"))
     await moogle.clean_up()
 
 
-async def _request(url: str, session: Optional[aiohttp.ClientSession] = None, auto_close: bool = True, raw_bytes: bool = False) -> Optional[bytes | dict[Any, Any]]: # pyright: ignore[reportUnusedFunction]  # noqa: FBT001, FBT002
+async def request(  # noqa: D103
+    url: str,
+    session: Optional[aiohttp.ClientSession] = None,
+    auto_close: bool = True,
+    raw_bytes: bool = False,
+) -> Optional[bytes | dict[Any, Any]]:  # pyright: ignore[reportUnusedFunction]
     if session is None:
         session = aiohttp.ClientSession()
 
@@ -164,6 +147,7 @@ async def _request(url: str, session: Optional[aiohttp.ClientSession] = None, au
     if auto_close:
         await session.close()
     return data
+
 
 def csv_parse(file: Path) -> Any:  # noqa: D103
     with file.open(mode="r", encoding="utf-8") as csv_file:
@@ -188,6 +172,7 @@ async def time_validation(func: Callable[..., Coroutine[Any, Any, Any]]) -> Any:
 
     LOGGER.info("Completed local_test() in %s seconds...", format(time() - stime, ".3f"))
     return var
+
 
 def ini_load(file: Path, section: str, options: list[str]) -> list[str | None]:
     """Parse an ini file.

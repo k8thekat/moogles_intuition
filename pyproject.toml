@@ -42,6 +42,8 @@ ignore = [
     "D401", # Ignore "Imperative Mood" statement for docstrings.
     "ERA001", #Ignore commented out code.
     "FIX002", # Ignore TODO's telling you to "fix them".
+    "FBT001", # Ignore "bool" type arguments and limited functionality statement.
+    "FBT002", # Ignore "bool" type arguments and limited functionality statement.
     "F401",
     "F402",
     "F403",

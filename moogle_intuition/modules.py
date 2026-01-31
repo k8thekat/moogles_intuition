@@ -242,9 +242,9 @@ URLS: dict[str, tuple[bool, str]] = {
         f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemSearchCategory.csv",
     ),
     "base_params": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/BaseParam.csv"),
-    "recipe": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv{LANGUAGE}//Recipe.csv"),
+    "recipe": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/Recipe.csv"),
     "recipe_lookup": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/RecipeLookup.csv"),
-    "gathering_item": (True, f"fhttps://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/GatheringItem.csv"),
+    "gathering_item": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/GatheringItem.csv"),
     "gathering_item_level": (
         False,
         f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/GatheringItemLevelConvertTable.csv",
@@ -271,6 +271,24 @@ DATA_URLS: dict[str, tuple[str, str]] = {
     "item_series": ("name", f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemSeries.csv"),
 }
 
+ATTRIBUTE_TYPE_TABLE: dict[str, Union[bool, Any]] ={
+    "is_secondary": bool,
+    "secret_recipe_book": Any,
+    "is_untradable": bool,
+    "is_indisposable": bool,
+    "lot": bool,
+    "is_crest_worth": bool,
+    "always_collectable": bool,
+    "is_pvp": bool,
+    "is_glamourous": bool,
+    "can_quick_synth": bool,
+    "can_hq": bool,
+    "exp_rewarded": bool,
+    "is_expert": bool,
+    "is_limited_job": bool,
+    "can_queue_for_duty": bool,
+    "rare": bool,
+    "is_shadow_node": bool}
 
 class External:
     _garlandtools_data: Optional[ItemResponse]
@@ -580,7 +598,6 @@ class Builder(Generic):
             # Take our data and turn it into a dict, using the second line of the CSV file as the Keys.
             data = csv.DictReader(file, fieldnames=keys)
             outdata: dict[str, dict[str, str]] = {}
-
             for entry in data:
                 outdata[entry["#"]] = entry
             file.close()
@@ -620,12 +637,101 @@ class Builder(Generic):
                 [self.sanitize_type_name(type_name=i) for i in types],
             )
 
+    def csv_parse_v2(
+        self,
+        path: Path,
+        *,
+        convert_pound: bool = True,
+        format_keys: bool = True,
+    ) -> tuple[dict[str, dict[str, int | str | list[int] | bool | None]], list[str], list[str]]:
+        """Parse a CSV file, breaking out the Keys and Types to be return as a tuple for turning into Typed Dicts.
+
+        - Purely for XIV Data Mining CSV structure.
+
+        .. note::
+            All keys, values and types are sanitized via `<Builder.sanitize_key_name()`,
+            `<Builder.convert_values()>` and `<Builder.sanitized_type_name()`.
+
+        Parameters
+        ----------
+        path: :class:`Path`
+            The Path to the CSV file.
+        convert_pound: :class:`bool`, optional
+            If the initial key value in the CSV should be changed to `id`.
+        format_keys: :class:`bool`, optional
+            If the keys should be formatted via `<Builder.from_camel_case()>`, by default True.
+
+        Returns
+        -------
+        :class:`tuple`
+            The Sanatized Data from the CSV file, along with the Keys and Types related to those Keys.
+
+        """
+        with path.open(mode="r", encoding="utf-8") as file:
+            # so first off we need the key/type pairing, read those, skipping the first line
+            # that is useless
+            # data = file.readline()
+            keys: list[str] = file.readline()[0:-1].split(",")
+            types: list[str] = []
+            # types: list[str] = file.readline()[0:-1].split(",")
+
+            # This line appears to be "ItemID" 0 which has no value based upon the CSV inspection.
+            data = file.readline()
+
+            # Take our data and turn it into a dict, using the second line of the CSV file as the Keys.
+            data = csv.DictReader(file, fieldnames=keys)
+            outdata: dict[str, dict[str, str]] = {}
+            # print([self.from_camel_case(entry) for entry in keys])
+            # input()
+            for entry in data:
+                # print(entry)
+                # input()
+                outdata[entry["#"]] = entry
+            file.close()
+
+            reject_keys: list[str] = ["#", "", "ModelSub", "ModelMain"]
+            sanitized_data: dict[str, dict[str, int | str | list[int] | bool | None]] = {}
+            for item, value in outdata.items():
+                sanitized_data[item] = {}
+                for k, v in value.items():
+                    _k = k
+                    # The Pound symbol from item.csv is the Item ID.
+                    if k == "#" and convert_pound:
+                        _k = "id"
+
+                    # Removes the unused keys.
+                    elif k in reject_keys:
+                        continue
+
+                    # ? Suggestion
+                    # Pep 8 all "keys" as they will be used as attributes for the TypedDict/Class objects.
+                    if format_keys is True:
+                        _k: str = self.from_camel_case(key_name=self.sanitize_key_name(key_name=_k))
+                    else:
+                        _k: str = self.sanitize_key_name(key_name=k)
+                    _v: str = self.sanitize_values(value=v)
+                    types.append(_v.__class__.__name__)
+                    sanitized_data[item][_k] = self.convert_values(value=_v)
+
+            if format_keys is True:
+                return (
+                    sanitized_data,
+                    [self.from_camel_case(key_name=self.sanitize_key_name(key_name=i)) for i in keys],
+                    [self.sanitize_type_name(type_name=i) for i in types],
+                )
+            return (
+                sanitized_data,
+                [self.sanitize_key_name(key_name=i) for i in keys],
+                [self.sanitize_type_name(type_name=i) for i in types],
+            )
+
     async def csv_to_json(
         self,
         csv_name: str,
         *,
         typed_dict: bool = False,
         typed_file_name: Optional[str] = None,
+        use_v2: bool = False,
         **csv_args: Unpack[CSVParseParams],
     ) -> None:
         """Parses a local `xiv_datamining` csv file into a JSON file.
@@ -645,6 +751,8 @@ class Builder(Generic):
         typed_file_name: :class:`Optional[str]`, optional
             The file name to write out the Typed Dict data to, by default None.
                 - If `None`, Defaults to `csv_name_typed.py`.
+        use_v2: :class:`bool`, optional
+            To use `csv_parse_v2` or not, this is to support the SCHEMA changes to XIVAPI csv files.
         **csv_args: :class:`Unpack[CSVParseParams]`
             Any additional args to supply to `<Builder.csv_parse()>`.
 
@@ -658,7 +766,10 @@ class Builder(Generic):
 
         if DATA_PATH.joinpath(csv_name).exists():
             LOGGER.debug("<%s.%s> | Found the local CSV file. | Name: %s", __class__.__name__, f_name, csv_name)
-            res, keys, types = self.csv_parse(path=DATA_PATH.joinpath(csv_name), **csv_args)
+            if use_v2:
+                res, keys, types = self.csv_parse_v2(path=DATA_PATH.joinpath(csv_name), **csv_args)
+            else:
+                res, keys, types = self.csv_parse(path=DATA_PATH.joinpath(csv_name), **csv_args)
 
             # ? Suggestion
             # This will make the JSON file regardless if it exists or not.
@@ -681,16 +792,22 @@ class Builder(Generic):
 
             data: bytes = await self._request(url=url)
             self.write_data_to_file(path=DATA_PATH, file_name=csv_name, data=data)
-            await self.csv_to_json(csv_name=csv_name, typed_dict=typed_dict, **csv_args)
+            await self.csv_to_json(csv_name=csv_name, typed_dict=typed_dict, use_v2=use_v2, **csv_args)
 
         # Remove the CSV files since we don't need them after they have been converted.
         LOGGER.debug("<%s.%s> | Removing CSV file. | Name: %s", __class__.__name__, f_name, csv_name)
         DATA_PATH.joinpath(csv_name).unlink()
 
-    async def file_validation(self) -> None:
+    async def file_validation(self, use_v2: bool = False) -> None:
         """Validate's the required files for Moogle to operate.
 
         - Files are located in `xiv_datamining`.
+
+        Parameters
+        ----------
+        use_v2: :class:`bool`, optional
+            To use `csv_parse_v2` or not, this is to support the SCHEMA changes to XIVAPI csv files.
+
         """
         LOGGER.info("<%s.%s> | Validating json files... | Path: %s", __class__.__name__, "file_validation", DATA_PATH)
         for key, data in URLS.items():
@@ -715,7 +832,7 @@ class Builder(Generic):
                     LOGGER.error("<%s.%s> | Failed to access url. | Url: %s",__class__.__name__, "file_validation", data[1])
                     continue
                 self.write_data_to_file(path=DATA_PATH, file_name=file_name, data=res)
-                await self.csv_to_json(csv_name=file_name, convert_pound=data[0], format_keys=True)
+                await self.csv_to_json(csv_name=file_name, convert_pound=data[0], format_keys=True, use_v2=use_v2)
                 LOGGER.debug(
                     "<%s.%s> | Finished retrieving and building data for file.| File: %s",
                     __class__.__name__,
@@ -1063,6 +1180,8 @@ class Builder(Generic):
         class_name: str,
         url: Optional[str] = None,
         data_url_key: Optional[str] = None,
+        *,
+        use_v2: bool = False,
     ) -> None:
         """Parses bytes and converts into a block of Enum code.
 
@@ -1083,6 +1202,8 @@ class Builder(Generic):
             The URL to fetch the CSV data from, by default None.
         data_url_key: :class:`Optional[str]`, optional
             The dictionary key value to fetch from `DATA_URLS` global, by default None.
+        use_v2: :class:`bool`, optional
+            To use `csv_parse_v2` or not, this is to support the SCHEMA changes to XIVAPI csv files.
 
         Raises
         ------
@@ -1107,7 +1228,12 @@ class Builder(Generic):
         elif url is not None:
             res: bytes = await self._request(url=url)
             self.write_data_to_file(path=DATA_PATH, file_name=file_name, data=res)
-            data = self.csv_parse(path=DATA_PATH.joinpath(file_name), convert_pound=False)
+
+            if use_v2:
+                data = self.csv_parse_v2(path=DATA_PATH.joinpath(file_name), convert_pound=False)
+            else:
+                data = self.csv_parse(path=DATA_PATH.joinpath(file_name), convert_pound=False)
+
             keys: list[int] = []
             values: list[str] = []
             # typically the first row is the keys of the CSV.
@@ -1413,56 +1539,8 @@ class Moogle(Generic):
     ) -> None:
         await self.clean_up()
 
-    async def clean_up(self) -> None:
-        """Handles deconstruction of :class:`Moogle`."""
-        LOGGER.debug("<%s._clean_up> | Closing any open `aiohttp.ClientSession`", __class__.__name__)
-        await self._universalis.clean_up()
-        await self._builder.clean_up()
-        await self._angler.clean_up()
-        await self._garlandtools.close()
 
-    def create_generic_item(self, **kwargs: Unpack[PartialItemData]) -> ItemData | None:
-        """Create a default value filled :class:`ItemData` TypedDict to be supplied to a :class:`Item` object.
-
-        .. note::
-            This was built to handle items from GarlandTools that may not have an ID value.
-
-
-        .. warning::
-            There is no validation of the ID provided; so if you clash with an existing Item ID... well, you're on your own.
-
-
-        Returns
-        -------
-        :class:`ItemData | None`
-            Item data to build an :class:`Item` object.
-
-        """
-        # Credits for the enrichment of an Eorzean free company.
-        item_data: ItemData = {}  # pyright: ignore[reportAssignmentType]
-        if kwargs.get("icon") is None:
-            item_data["icon"] = 0
-        if kwargs.get("description") is None:
-            item_data["description"] = kwargs["name"] + "generic description."
-        for key, value in kwargs.items():
-            if key not in item_data:
-                item_data[key] = value
-
-        for key, value in ItemData.__annotations__.items():
-            if key not in kwargs and isinstance(value, ForwardRef):
-                if value.__forward_arg__ == "int":
-                    item_data[key] = 0
-                elif value.__forward_arg__ == "bool":
-                    item_data[key] = False
-                elif value.__forward_arg__ == "str":
-                    item_data[key] = ""
-        # This is just in case, checking a random but
-        # specific key if it exists to invalidate our "spoofing" default data.
-        if "singular" not in item_data:
-            return None
-        return item_data
-
-    async def build(self, *, ignore_validation: bool = False, relocate_data: bool = False) -> Self:
+    async def build(self, *, use_v2: bool = False, ignore_validation: bool = False, relocate_data: bool = False) -> Self:
         """Builds the required arrays and library's for :class:`Moogle` to function.
 
         Parameters
@@ -1471,6 +1549,8 @@ class Moogle(Generic):
             Relocates current local JSON files, fetches new files and builds new local JSON files, default is False.
         ignore_validation: :class:`bool`
             Allows bypassing local JSON/CSV file validation, default is False.
+        use_v2: :class:`bool`, optional
+            To use `csv_parse_v2` or not, this is to support the SCHEMA changes to XIVAPI csv files.
 
         Returns
         -------
@@ -1484,7 +1564,7 @@ class Moogle(Generic):
             ignore_validation = False
 
         if ignore_validation is False:
-            await self._builder.file_validation()
+            await self._builder.file_validation(use_v2=use_v2)
 
         # Item related dict/JSON
         self._items = self._builder._load_json(path=DATA_PATH.joinpath("item.json"))
@@ -1561,6 +1641,55 @@ class Moogle(Generic):
         self._angler_fish_map = await self._angler.get_fish_id_mapping()
 
         return self
+
+    async def clean_up(self) -> None:
+        """Handles deconstruction of :class:`Moogle`."""
+        LOGGER.debug("<%s._clean_up> | Closing any open `aiohttp.ClientSession`", __class__.__name__)
+        await self._universalis.clean_up()
+        await self._builder.clean_up()
+        await self._angler.clean_up()
+        await self._garlandtools.close()
+
+    def create_generic_item(self, **kwargs: Unpack[PartialItemData]) -> ItemData | None:
+        """Create a default value filled :class:`ItemData` TypedDict to be supplied to a :class:`Item` object.
+
+        .. note::
+            This was built to handle items from GarlandTools that may not have an ID value.
+
+
+        .. warning::
+            There is no validation of the ID provided; so if you clash with an existing Item ID... well, you're on your own.
+
+
+        Returns
+        -------
+        :class:`ItemData | None`
+            Item data to build an :class:`Item` object.
+
+        """
+        # Credits for the enrichment of an Eorzean free company.
+        item_data: ItemData = {}  # pyright: ignore[reportAssignmentType]
+        if kwargs.get("icon") is None:
+            item_data["icon"] = 0
+        if kwargs.get("description") is None:
+            item_data["description"] = kwargs["name"] + "generic description."
+        for key, value in kwargs.items():
+            if key not in item_data:
+                item_data[key] = value
+
+        for key, value in ItemData.__annotations__.items():
+            if key not in kwargs and isinstance(value, ForwardRef):
+                if value.__forward_arg__ == "int":
+                    item_data[key] = 0
+                elif value.__forward_arg__ == "bool":
+                    item_data[key] = False
+                elif value.__forward_arg__ == "str":
+                    item_data[key] = ""
+        # This is just in case, checking a random but
+        # specific key if it exists to invalidate our "spoofing" default data.
+        if "singular" not in item_data:
+            return None
+        return item_data
 
     @overload
     def get_item(self, item: str, *, limit_results: Literal[1], match: int = ...) -> Item: ...

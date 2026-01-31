@@ -3,7 +3,6 @@ The current issues and TODOs for `Moogle Intuition`.
 - Setup pypi/etc
 - Double check docstrings and names.
 - Perform a Unit Test.
-- See about checking the gitHub for a release for XIV_Datamining files.
 
 ## Features:
 Additional features and or integration with other platforms.
@@ -22,4 +21,3 @@ Additional features and or integration with other platforms.
 
 
 ## Issues:
-- Flying Chair; returns not marketable.

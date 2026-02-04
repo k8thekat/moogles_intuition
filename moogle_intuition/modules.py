@@ -243,35 +243,56 @@ URLS: dict[str, tuple[bool, str]] = {
     ),
     "base_params": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/BaseParam.csv"),
     "recipe": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/Recipe.csv"),
-    "recipe_lookup": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/RecipeLookup.csv"),
-    "gathering_item": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/GatheringItem.csv"),
+    "recipe_lookup": (
+        True,
+        f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/RecipeLookup.csv",
+    ),
+    "gathering_item": (
+        True,
+        f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/GatheringItem.csv",
+    ),
     "gathering_item_level": (
         False,
         f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/GatheringItemLevelConvertTable.csv",
     ),
-    "fish_parameter": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/FishParameter.csv"),
+    "fish_parameter": (
+        True,
+        f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/FishParameter.csv",
+    ),
     "fishing_spot": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/FishingSpot.csv"),
-    "spearfishing_item": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/SpearfishingItem.csv"),
+    "spearfishing_item": (
+        True,
+        f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/SpearfishingItem.csv",
+    ),
     "spearfishing_notebook": (
         True,
         f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/SpearfishingNotebook.csv",
     ),
     "class_job": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ClassJob.csv"),
-    "class_job_category": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ClassJobCategory.csv"),
+    "class_job_category": (
+        True,
+        f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ClassJobCategory.csv",
+    ),
     "place_name": (True, f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/PlaceName.csv"),
 }
 
 DATA_URLS: dict[str, tuple[str, str]] = {
-    "item_special_bonus": ("name", f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemSpecialBonus.csv"),
+    "item_special_bonus": (
+        "name",
+        f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemSpecialBonus.csv",
+    ),
     "item_repair_resource": (
         "item",
         f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemRepairResource.csv",
     ),
-    "item_ui_category": ("name", f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemUICategory.csv"),
+    "item_ui_category": (
+        "name",
+        f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemUICategory.csv",
+    ),
     "item_series": ("name", f"https://raw.githubusercontent.com/xivapi/ffxiv-datamining/refs/heads/{BRANCH}/csv/{LANGUAGE}/ItemSeries.csv"),
 }
 
-ATTRIBUTE_TYPE_TABLE: dict[str, Union[bool, Any]] ={
+ATTRIBUTE_TYPE_TABLE: dict[str, Union[bool, Any]] = {
     "is_secondary": bool,
     "secret_recipe_book": Any,
     "is_untradable": bool,
@@ -288,20 +309,22 @@ ATTRIBUTE_TYPE_TABLE: dict[str, Union[bool, Any]] ={
     "is_limited_job": bool,
     "can_queue_for_duty": bool,
     "rare": bool,
-    "is_shadow_node": bool}
+    "is_shadow_node": bool,
+}
+
 
 class External:
-    _garlandtools_data: Optional[ItemResponse]
+    garlandtools_data: Optional[ItemResponse]
     "For GarlandToolsAsync API data"
-    _icon_data: Optional[GTObject]
+    icon_data: Optional[GTObject]
     "For GarlandToolsAsync Icon data"
 
-    _mb_current: Optional[CurrentData]
+    mb_current: Optional[CurrentData]
     "For Universalis Marketboard Current data"
-    _mb_history: Optional[HistoryData]
+    mb_history: Optional[HistoryData]
     "For Universalis Marketboard History data"
 
-    _angler_data: Optional[list[AnglerFish]]
+    angler_data: Optional[list[AnglerFish]]
     "For FF14Angler Website data"
 
 
@@ -359,7 +382,7 @@ class Object:
 
     def __repr__(self) -> str:
         try:
-            res: str = f"\n\n__{self.__class__.__name__}__\n"
+            res: str = f"\n__{self.__class__.__name__}__\n"
             for entry in self._repr_keys:
                 if entry.startswith("_"):
                     continue
@@ -372,7 +395,7 @@ class Object:
             return res  # noqa: TRY300 # I want to continue generating our str return.
         # This is to catch any objects without a `_repr_keys` defined.
         except AttributeError:
-            return f"\n\n__{self.__class__.__name__}__\n" + "\n".join([
+            return f"\n__{self.__class__.__name__}__\n" + "\n".join([
                 f"{e}: {getattr(self, e)}" for e in sorted(self.__dict__) if e.startswith("_") is False
             ])
 
@@ -387,7 +410,6 @@ class Object:
 
         """
         return self._external
-
 
 
 class Generic:
@@ -491,7 +513,7 @@ class Generic:
                 continue
             payload += ",".join([
                 str(value["item"].id),
-                str("null" if value["item"].recipe is None else value["item"].recipe.recipe_id),
+                str("null" if value["item"].jobrecipes is None else value["item"].jobrecipes.recipe_id),
                 str(value["count"]) + ";",
             ])
 
@@ -829,7 +851,7 @@ class Builder(Generic):
                 try:
                     res: bytes = await self._request(url=data[1])
                 except ConnectionError:
-                    LOGGER.error("<%s.%s> | Failed to access url. | Url: %s",__class__.__name__, "file_validation", data[1])
+                    LOGGER.error("<%s.%s> | Failed to access url. | Url: %s", __class__.__name__, "file_validation", data[1])
                     continue
                 self.write_data_to_file(path=DATA_PATH, file_name=file_name, data=res)
                 await self.csv_to_json(csv_name=file_name, convert_pound=data[0], format_keys=True, use_v2=use_v2)
@@ -1539,7 +1561,6 @@ class Moogle(Generic):
     ) -> None:
         await self.clean_up()
 
-
     async def build(self, *, use_v2: bool = False, ignore_validation: bool = False, relocate_data: bool = False) -> Self:
         """Builds the required arrays and library's for :class:`Moogle` to function.
 
@@ -1626,7 +1647,7 @@ class Moogle(Generic):
         self._gathering_items_ref = self._builder._reference_dict(
             data=self._gathering_items,
             value_get="item",
-            flip_key_value=True,
+            flip_key_value=False,
         )
         self._gathering_item_levels = self._builder._load_json(path=DATA_PATH.joinpath("gathering_item_level.json"))
 
@@ -2319,22 +2340,21 @@ class Item(Object):
     """
 
     # _ff14angler_data: Any
-    _recipe: Optional[JobRecipe]
+    _jobrecipes: Optional[JobRecipe]
+    _recipe: Optional[Recipe]
     _fishing: Optional[Fishing]
     _spear_fishing: Optional[SpearFishing]
     _gathering: Optional[Gathering]
 
-    _garlandtools_data: Optional[ItemResponse]
-    "For GarlandToolsAsync API data"
     _vendors: Optional[list[Vendor]]
+    "Local parsed GarlandToolsData vendors information if applicable."
     _tradeshops: Optional[list[Vendor]]
-    _icon_data: Optional[GTObject]
+    "Local parsed GarlandToolsData tradeshops information if applicable."
+
 
     _mb_current: Optional[CurrentData]
     _mb_history: Optional[HistoryData]
 
-    # External data
-    # _external: External()
 
     id: int
     icon: int
@@ -2394,7 +2414,7 @@ class Item(Object):
         self._repr_keys = ["id", "name"]
         self.description = None
 
-        self._external._icon_data = None
+        self._external.icon_data = None
 
         for key in self.__slots__:
             value: Optional[int | bool | str] = data.get(key, None)
@@ -2432,10 +2452,10 @@ class Item(Object):
             LOGGER.debug("<%s.%s> | _is_gatherable <MoogleLookupError> | Item ID: %s", __class__.__name__, "__init__", self.id)
             self._gathering = None
         try:
-            self._recipe = self._get_item_job_recipes(self.id)
+            self._jobrecipes = self._get_item_job_recipes(self.id)
         except MoogleLookupError:
             LOGGER.debug("<%s.%s> | _get_item_job_recipes <MoogleLookupError> | Item ID: %s", __class__.__name__, "__init__", self.id)
-            self._recipe = None
+            self._jobrecipes = None
         try:
             # self._fishing = self._moogle._is_fishable(self.id)
             self._fishing = self._is_fishable()
@@ -2461,7 +2481,7 @@ class Item(Object):
         return isinstance(other, self.__class__) and self.id < other.id
 
     @property
-    def recipe(self) -> Optional[JobRecipe]:
+    def jobrecipes(self) -> Optional[JobRecipe]:
         """Any recipe information stored in seperately attached attributes related to the :class:`Item`, if applicable.
 
         Returns
@@ -2470,7 +2490,21 @@ class Item(Object):
             Returns any related recipe information as an object representing the data from the recipe.json.
 
         """
-        return self._recipe
+        return self._jobrecipes
+
+    @property
+    def recipe(self) -> Optional[Recipe]:
+        """The first job specific recipe, if applicable.
+
+        Returns
+        -------
+        :class:`Optional[Recipe]`
+            A representation of a Final Fantasy 14 Recipe.
+
+        """
+        if self._jobrecipes is not None:
+            return self._jobrecipes[0]
+        return self._jobrecipes
 
     @property
     def fishing(self) -> Optional[Fishing]:
@@ -2509,9 +2543,76 @@ class Item(Object):
         return self._gathering
 
     @property
+    def garlandtools_data(self) -> Optional[ItemResponse]:
+        """Cached GarlandTools API data, if applicable.
+
+        .. warning::
+            The Garlandtools data must first be fetched/cached via :class:`Item.get_garlandtools_data()`.
+
+        Returns
+        -------
+        :class:`Optional[ItemResponse]`
+            Cached GarlandTools dict data if applicable.
+
+        """
+        try:
+            return self.external.garlandtools_data
+        except AttributeError:
+            return None
+
+    @property
     def garland_tools_url(self) -> str:
         """A url link to the item on Garland Tools."""
         return f"https://www.garlandtools.org/db/#item/{self.id}"
+
+    @property
+    def icon_data(self) -> Optional[GTObject]:
+        """GarlandTools Icon data."""
+        return self._external.icon_data
+
+    @property
+    def vendors(self) -> Optional[list[Vendor]]:
+        """Item vendor information, if applicable.
+
+        .. warning::
+            The Garlandtools data must first be fetched/cached via :class:`Item.get_garlandtools_data()` and
+            then parsed via :class:`Item.get_vendors()`.
+
+        Returns
+        -------
+        :class:`Optional[list[Vendor]]`
+            A list of parsed GarlandTools data regarding Vendors.
+
+        """
+        if self.external.garlandtools_data is None:
+            return None
+
+        try:
+            return self._vendors
+        except AttributeError:
+            return None
+
+    @property
+    def tradeshops(self) -> Optional[list[Vendor]]:
+        """Tradeshop information, if applicable.
+
+        .. warning::
+            The Garlandtools data must first be fetched/cached via :class:`Item.get_garlandtools_data()` and
+            then parsed via :class:`Item.get_vendors()`.
+
+        Returns
+        -------
+        :class:`Optional[list[Vendor]]`
+            A list of parsed GarlandTools data regarding Tradeshops.
+
+        """
+        if self.garlandtools_data is None:
+            return None
+
+        try:
+            return self._tradeshops
+        except AttributeError:
+            return None
 
     @property
     def ffxivconsolegames_wiki_url(self) -> Any:
@@ -2531,7 +2632,7 @@ class Item(Object):
     def mb_current(self) -> Optional[CurrentData]:
         """Cached current marketboard data, if applicable."""
         try:
-            return self._external._mb_current
+            return self.external.mb_current
         except AttributeError:
             return None
 
@@ -2539,7 +2640,7 @@ class Item(Object):
     def mb_history(self) -> Optional[HistoryData]:
         """Cached history marketboard data, if applicable."""
         try:
-            return self._external._mb_history
+            return self.external.mb_history
         except AttributeError:
             return None
 
@@ -2625,7 +2726,7 @@ class Item(Object):
 
         """
         try:
-            self._external._mb_current = await self._moogle._universalis.get_current_data(item=self.id, **kwargs)
+            self.external.mb_current = await self._moogle._universalis.get_current_data(item=self.id, **kwargs)
         except UniversalisError:
             LOGGER.error(
                 "<%s.%S> | Failed to get Universalis Current Marketboard data | Item: %s",
@@ -2634,7 +2735,7 @@ class Item(Object):
                 self.id,
             )
             return None
-        return self._external._mb_current
+        return self.mb_current
 
     async def get_history_marketboard(self, **kwargs: Unpack[HistMarketBoardParams]) -> Optional[HistoryData]:
         """Retrieve the Marketboard History data for this item, while also setting the `<Item.mb_history>` property.
@@ -2651,7 +2752,7 @@ class Item(Object):
 
         """
         try:
-            self._external._mb_history = await self._moogle._universalis.get_history_data(item=self.id, **kwargs)
+            self.external.mb_history = await self._moogle._universalis.get_history_data(item=self.id, **kwargs)
         except UniversalisError:
             LOGGER.error(
                 "<%s.%S> | Failed to get Universalis History Marketboard data | Item: %s",
@@ -2660,25 +2761,7 @@ class Item(Object):
                 self.id,
             )
             return None
-        return self._external._mb_history
-
-    @property
-    def garlandtools_data(self) -> Optional[ItemResponse]:
-        """Cached GarlandTools API data, if applicable.
-
-        .. warning::
-            The Garlandtools data must first be fetched/cached via :class:`Item.get_garlandtools_data()`.
-
-        Returns
-        -------
-        :class:`Optional[ItemResponse]`
-            Cached GarlandTools dict data if applicable.
-
-        """
-        try:
-            return self._external._garlandtools_data
-        except AttributeError:
-            return None
+        return self.mb_history
 
     async def get_garlandtools_data(self) -> Optional[ItemResponse]:
         """Retrieve GarlandTools API data for this item, while also setting the :class:`Item.garlandtools_data` property.
@@ -2691,11 +2774,11 @@ class Item(Object):
 
         """
         try:
-            self._external._garlandtools_data = await self._moogle._garlandtools.item(item_id=self.id)
+            self.external.garlandtools_data = await self._moogle._garlandtools.item(item_id=self.id)
         except (GarlandToolsKeyError, GarlandToolsRequestError):
             LOGGER.warning("<%s.%s> | Failed to get GarlandTools Data. | Item: %s", __class__.__name__, "get_garlandtools_data", self.id)
             return None
-        return self._external._garlandtools_data
+        return self.garlandtools_data
 
     async def get_icon(self, *, icon_type: IconType = IconType.item) -> Optional[GTObject]:
         """Fetches GarlandTools Icon data, if applicable.
@@ -2713,38 +2796,16 @@ class Item(Object):
             otherwise `None` if a :class:`GarlandToolsRequestError` or :class:`GarlandToolsKeyError` occurs.
 
         """
-        if self._external._icon_data is not None:
-            return self._external._icon_data
+        if self.external.icon_data is not None:
+            return self.icon_data
 
         try:
             res: GTObject = await self._moogle._garlandtools.icon(icon_id=self.icon, icon_type=icon_type)
-            self._external._icon_data = res
+            self.external.icon_data = res
         except (GarlandToolsKeyError, GarlandToolsRequestError):
             LOGGER.warning("<%s.%s> | Failed to get GarlandTools Icon data. | Item: %s", __class__.__name__, "get_icon", self.id)
             return None
-        return res
-
-    @property
-    def vendors(self) -> Optional[list[Vendor]]:
-        """Item vendor information, if applicable.
-
-        .. warning::
-            The Garlandtools data must first be fetched/cached via :class:`Item.get_garlandtools_data()` and
-            then parsed via :class:`Item.get_vendors()`.
-
-        Returns
-        -------
-        :class:`Optional[list[Vendor]]`
-            A list of parsed GarlandTools data regarding Vendors.
-
-        """
-        if self.garlandtools_data is None:
-            return None
-
-        try:
-            return self._vendors
-        except AttributeError:
-            return None
+        return self.icon_data
 
     def get_vendors(self) -> list[Vendor] | None:
         """Parse GarlandTools Data and retrieve Vendor information, if applicable.
@@ -2786,29 +2847,7 @@ class Item(Object):
                     "shop_name": str(value["obj"].get("t", "N/A")),
                     "url": f"https://www.garlandtools.org/db/#npc/{value['id']}",
                 })
-        return self._vendors
-
-    @property
-    def tradeshops(self) -> Optional[list[Vendor]]:
-        """Tradeshop information, if applicable.
-
-        .. warning::
-            The Garlandtools data must first be fetched/cached via :class:`Item.get_garlandtools_data()` and
-            then parsed via :class:`Item.get_vendors()`.
-
-        Returns
-        -------
-        :class:`Optional[list[Vendor]]`
-            A list of parsed GarlandTools data regarding Tradeshops.
-
-        """
-        if self.garlandtools_data is None:
-            return None
-
-        try:
-            return self._tradeshops
-        except AttributeError:
-            return None
+        return self.vendors
 
     def get_tradeshops(self) -> list[Vendor] | None:
         """Parse GarlandTools data and retrieve Trade shop information, if applicable.
@@ -2865,7 +2904,7 @@ class Item(Object):
                         "shop_name": str(shop_info["obj"].get("t", "N/A")),
                         "url": f"https://www.garlandtools.org/db/#npc/{shop_info['id']}",
                     })
-        return self._tradeshops
+        return self.tradeshops
 
 
 class JobRecipe(Object):
@@ -2902,13 +2941,21 @@ class JobRecipe(Object):
     """
 
     CRP: Optional[Recipe]
+    "Carpenter related Job Recipe, if applicable."
     BSM: Optional[Recipe]
+    "Blacksmith related Job Recipe, if applicable."
     ARM: Optional[Recipe]
+    "Armorsmith related Job Recipe, if applicable."
     GSM: Optional[Recipe]
+    "Goldsmith related Job Recipe, if applicable."
     LTW: Optional[Recipe]
+    "Leatherworker related Job Recipe, if applicable."
     WVR: Optional[Recipe]
+    "Weaver related Job Recipe, if applicable."
     ALC: Optional[Recipe]
+    "Alchemist related Job Recipe, if applicable."
     CUL: Optional[Recipe]
+    "Culinarian related Job Recipe, if applicable."
     _id: Optional[int]
     _item: Item
 
@@ -3072,35 +3119,35 @@ class Recipe(Object):
         The resulting Final Fantasy 14 Item object.
     amount_result: :class:`int`
         The number of items recieved after completing the crafting recipe.
-    item_ingredient0: :class:`Item`
+    ingredient0: :class:`Item`
         The Final Fantasy 14 item for the ingredient of the recipe, if applicable.
     amount_ingredient0: :class:`int`
         The quantity required for the ingredient of the recipe, if applicable.
-    item_ingredient1: :class:`Item`
+    ingredient1: :class:`Item`
         The Final Fantasy 14 item for the ingredient of the recipe, if applicable.
     amount_ingredient1: :class:`int`
         The quantity required for the ingredient of the recipe, if applicable.
-    item_ingredient2: :class:`Item`
+    ingredient2: :class:`Item`
         The Final Fantasy 14 item for the ingredient of the recipe, if applicable.
     amount_ingredient2: :class:`int`
         The quantity required for the ingredient of the recipe, if applicable.
-    item_ingredient3: :class:`Item`
+    ingredient3: :class:`Item`
         The Final Fantasy 14 item for the ingredient of the recipe, if applicable.
     amount_ingredient3: :class:`int`
         The quantity required for the ingredient of the recipe, if applicable.
-    item_ingredient4: :class:`Item`
+    ingredient4: :class:`Item`
         The Final Fantasy 14 item for the ingredient of the recipe, if applicable.
     amount_ingredient4: :class:`int`
         The quantity required for the ingredient of the recip, if applicablee.
-    item_ingredient5: :class:`Item`
+    ingredient5: :class:`Item`
         The Final Fantasy 14 item for the ingredient of the recipe, if applicable.
     amount_ingredient5: :class:`int`
         The quantity required for the ingredient of the recipe, if applicable.
-    item_ingredient6: :class:`Item`
+    ingredient6: :class:`Item`
         The Final Fantasy 14 item for the ingredient of the recipe, if applicable.
     amount_ingredient6: :class:`int`
         The quantity required for the ingredient of the recipe, if applicable.
-    item_ingredient7: :class:`Item`
+    ingredient7: :class:`Item`
         The Final Fantasy 14 item for the ingredient of the recipe, if applicable.
     amount_ingredient7: :class:`int`
         The quantity required for the ingredient of the recipe, if applicable.
@@ -3124,21 +3171,21 @@ class Recipe(Object):
     recipe_level_table: RecipeLevelData
     item_result: Item
     amount_result: int
-    item_ingredient0: Optional[Item | int]
+    ingredient0: Optional[Item | int]
     amount_ingredient0: Optional[int]
-    item_ingredient1: Optional[Item | int]
+    ingredient1: Optional[Item | int]
     amount_ingredient1: Optional[int]
-    item_ingredient2: Optional[Item | int]
+    ingredient2: Optional[Item | int]
     amount_ingredient2: Optional[int]
-    item_ingredient3: Optional[Item | int]
+    ingredient3: Optional[Item | int]
     amount_ingredient3: Optional[int]
-    item_ingredient4: Optional[Item | int]
+    ingredient4: Optional[Item | int]
     amount_ingredient4: Optional[int]
-    item_ingredient5: Optional[Item | int]
+    ingredient5: Optional[Item | int]
     amount_ingredient5: Optional[int]
-    item_ingredient6: Optional[Item | int]
+    ingredient6: Optional[Item | int]
     amount_ingredient6: Optional[int]
-    item_ingredient7: Optional[Item | int]
+    ingredient7: Optional[Item | int]
     amount_ingredient7: Optional[int]
     can_quick_synth: bool
     can_hq: bool
@@ -3161,16 +3208,16 @@ class Recipe(Object):
         "can_quick_synth",
         "craft_type",
         "id",
+        "ingredient0",
+        "ingredient1",
+        "ingredient2",
+        "ingredient3",
+        "ingredient4",
+        "ingredient5",
+        "ingredient6",
+        "ingredient7",
         "is_expert",
         "is_specialization_required",
-        "item_ingredient0",
-        "item_ingredient1",
-        "item_ingredient2",
-        "item_ingredient3",
-        "item_ingredient4",
-        "item_ingredient5",
-        "item_ingredient6",
-        "item_ingredient7",
         "item_required",
         "item_result",
         "recipe_level_table",
@@ -3197,7 +3244,7 @@ class Recipe(Object):
         self.id = int(recipe_id)
         # This list to control the amount of information we return via `__str__()` and `__repr__()` dunder methods.
         self._repr_keys = ["id", "craft_type", "item_result", "is_expert", "item_required", "amount_result"]
-        self._repr_keys.extend([f"item_ingredient{idx}" for idx in range(8)])
+        self._repr_keys.extend([f"ingredient{idx}" for idx in range(8)])
         self._repr_keys.extend([f"amount_ingredient{idx}" for idx in range(8)])
         for key in self.__slots__:
             value: Optional[int | bool | str] = data.get(key, None)
@@ -3208,7 +3255,7 @@ class Recipe(Object):
                     self.item_result = item
 
                 # Essentially we are looking up all our Ingredients and setting our item objects.
-                elif key in ["is_specialization_required", "item_required"] or key.startswith("item_ingredient"):
+                elif key in ["is_specialization_required", "item_required"] or key.startswith("ingredient"):
                     if value not in [0, -1]:
                         try:
                             setattr(self, key, self._moogle.get_item(item=str(value), limit_results=1))
@@ -3253,7 +3300,7 @@ class Recipe(Object):
         _iter = 0
         while _iter < 8:
             try:
-                ingredient: Optional[Item] = getattr(self, f"item_ingredient{_iter}")
+                ingredient: Optional[Item] = getattr(self, f"ingredient{_iter}")
                 count: Optional[int] = getattr(self, f"amount_ingredient{_iter}")
                 if isinstance(ingredient, int) or (ingredient is None or count is None):
                     _iter += 1
@@ -3315,8 +3362,8 @@ class Recipe(Object):
                 await item.get_current_marketboard(**kwargs)
 
             # This is for the item if it has it's own recipe
-            if item.recipe is not None:
-                res: dict[int, ShoppingItem] | None = await item.recipe.get_crafting_cost(count=ingredient[1] * count, **kwargs)
+            if item.jobrecipes is not None:
+                res: dict[int, ShoppingItem] | None = await item.jobrecipes.get_crafting_cost(count=ingredient[1] * count, **kwargs)
                 if res is not None:
                     results[item.id]["ingredients"] = res
 
@@ -3327,11 +3374,12 @@ class Recipe(Object):
         """The cummilative total of every ingredient and it's quantity."""
         val = 0
         for item, quantity in self:
-            if item.recipe is not None:
-                val += item.recipe[0].total_ingredient_quantity
+            if item.jobrecipes is not None:
+                val += item.jobrecipes[0].total_ingredient_quantity
                 continue
             val += quantity
         return val
+
 
 class Fish(Object):
     """Generic base object for handling FF14 Angler data and FFXIV item information.
@@ -3477,17 +3525,17 @@ class Fish(Object):
                     best = fish
 
         if best_chance is True:
-            self._external._angler_data = data
+            self._external.angler_data = data
             return best
 
-        self._external._angler_data = data
+        self._external.angler_data = data
         return data
 
     @property
     def angler_data(self) -> Optional[list[AnglerFish]]:
         """Houses the FF14Angler information retrieved from :class:`Self.get_angler_data()`."""
         try:
-            return self._external._angler_data
+            return self._external.angler_data
         except AttributeError:
             return None
 
@@ -3496,7 +3544,8 @@ class Fish(Object):
         """The FF14Angler website url for the Fish."""
         if self.angler_id is None:
             return "https://en.ff14angler.com/"
-        return f"https://en.ff14angler.com/fish/{self.angler_id}"
+        # return f"https://en.ff14angler.com/fish/{self.angler_id}"
+        return f"https://en.ff14angler.com/?spot=0&fish={self.angler_id}&bait=0&cmd=search"
 
 
 class Fishing(Fish):

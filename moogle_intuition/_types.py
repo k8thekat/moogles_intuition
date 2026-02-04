@@ -189,21 +189,21 @@ class RecipeData(TypedDict):
     recipe_level_table: Any  # RecipeLevelTable
     item_result: Any  # Item - This value is the FINISHED FFXIVItem.item_id value.
     amount_result: int
-    item_ingredient0: Any  # Item
+    ingredient0: Any  # Item
     amount_ingredient0: int
-    item_ingredient1: Any  # Item
+    ingredient1: Any  # Item
     amount_ingredient1: int
-    item_ingredient2: Any  # Item
+    ingredient2: Any  # Item
     amount_ingredient2: int
-    item_ingredient3: Any  # Item
+    ingredient3: Any  # Item
     amount_ingredient3: int
-    item_ingredient4: Any  # Item
+    ingredient4: Any  # Item
     amount_ingredient4: int
-    item_ingredient5: Any  # Item
+    ingredient5: Any  # Item
     amount_ingredient5: int
-    item_ingredient6: Any  # Item
+    ingredient6: Any  # Item
     amount_ingredient6: int
-    item_ingredient7: Any  # Item
+    ingredient7: Any  # Item
     amount_ingredient7: int
     recipe_notebook_list: Any  # RecipeNotebookList
     display_priority: int
@@ -472,6 +472,7 @@ class FishingSpotData(TypedDict):
     gathering_level: int
     big_fish_on_reach: str
     big_fish_on_end: str
+    big_fish_on_refresh: str
     fishing_spot_category: int
     rare: bool
     territory_type: int  # TerritoryType

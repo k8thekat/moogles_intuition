@@ -58,7 +58,7 @@ version_info: VersionInfo = VersionInfo(major=1, minor=0, revision=2, release_le
 
 
 LOGGER: logging.Logger = logging.getLogger(__name__)
-
+# "https://en.ff14angler.com/?spot={spot_id}&fish={fish_id}&bait={bait_id}&cmd=search"
 
 class PartialAngler:
     _repr_keys: list[str]
@@ -182,10 +182,24 @@ class Angler(PartialAngler):
 
         """
         LOGGER.debug("Fetching FF14Angler Fish location data for Fish ID: %s", fish_id)
-        url = "https://en.ff14angler.com/fish/" + str(fish_id)
+        # url = "https://en.ff14angler.com/fish/" + str(fish_id)
+        url = f"https://en.ff14angler.com/?spot=0&fish={fish_id!s}&bait=0&cmd=search"
         fishing_html_data: Optional[bytes] = await self._request(url=url)
 
-        soup = AnglerSoup(fishing_html_data, "html.parser")
+        if fishing_html_data is None:
+            return None
+        try:
+            soup = AnglerSoup(fishing_html_data, "html.parser")
+        # This occurs obviously by the "type" issue, but an invalid URL or data caused this originally.
+        # Leaving this except in place temporarily as I continue development.
+        except TypeError:
+            LOGGER.error(
+                "<%s.%s> | AnglerSoup encountered a `TypeError`. | Type: %s",
+                __class__.__name__,
+                "get_fish_locations",
+                type(fishing_html_data),
+            )
+            return None
 
         # just a list of IDs for locations
         locations: list[int] = []
@@ -290,8 +304,8 @@ class Angler(PartialAngler):
 
         """
         LOGGER.debug("Fetching FF14Angler location data for Location ID: %s | Fish ID: %s ", location_id, fish_id)
-
-        url: str = "https://en.ff14angler.com/spot/" + str(location_id)
+        url = f"https://en.ff14angler.com/?spot={location_id!s}&fish=0&bait=0&cmd=search"
+        # url: str = "https://en.ff14angler.com/spot/" + str(location_id)
 
         fishing_html_data: Optional[bytes] = await self._request(url=url)
         if fishing_html_data is None:
@@ -884,14 +898,16 @@ class AnglerFish(PartialAngler):
     @property
     def ff14angler_url(self) -> str:
         """The FF14Angler website url for the Fish."""
-        return f"https://en.ff14angler.com/fish/{self.item_id}"
+        # return f"https://en.ff14angler.com/fish/{self.item_id}"
+        return f"https://en.ff14angler.com/?spot=0&fish={self.item_id}&bait=0&cmd=search"
 
     @property
     def ff14angler_spot_url(self) -> str:
         """The FF14Angler website url for the Spot if the `sub_area_id` is available, otherwise returns the home page."""
         if self.sub_area_id is None:
             return "https://en.ff14angler.com"
-        return f"https://en.ff14angler.com/spot/{self.sub_area_id}"
+        # return f"https://en.ff14angler.com/spot/{self.sub_area_id}"
+        return f"https://en.ff14angler.com/?spot={self.sub_area_id}&fish=0&bait=0&cmd=search"
 
     @property
     def sub_area_name(self) -> Optional[str]:
@@ -911,8 +927,6 @@ class AnglerFish(PartialAngler):
     def area_name(self) -> Optional[str]:
         """Returns the Parent Area name if applicable."""
         return self._area_name
-
-
 
     def __init__(self, item_id: int, data: FishingData, spot: Optional[dict[str, dict[str, int]]] = None) -> None:
         """Build your :class:`AnglerFish` object.
@@ -955,7 +969,6 @@ class AnglerFish(PartialAngler):
 
             else:
                 setattr(self, key, value)
-
 
     def best_bait(self) -> Optional[AnglerBaits]:
         """Retrieves the optimal chance Fishing bait related to the `<AnglerFish.location_name>` class.

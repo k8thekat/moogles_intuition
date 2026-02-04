@@ -73,22 +73,10 @@ version_info: VersionInfo = VersionInfo(major=1, minor=0, revision=1, release_le
 
 
 class AllaganTools(Moogle):
-    """AllaganTools _summary_.
-
-    Parameters
-    ----------
-    Moogle: :class:`_type_`
-        _description_.
-
-    Returns
-    -------
-    :class:`_type_`
-        _description_.
-
-    """
+    """An expanded handler similar to :class:`Moogle`; but has the ability to parse `Allagan Tools` CSV data."""
 
     # Handles interactions with AllaganTools CSV data and Moogles Intuition as a separate class.
-    def _parse_atools_csv(
+    def parse_atools_csv(
         self,
         data: bytes | str,
         *,
@@ -194,7 +182,7 @@ class InventoryItem(MoogleItem):
     source: str
     location: InventoryLocation
 
-    _recipe: Optional[MoogleJobRecipe | JobRecipe]
+    _jobrecipes: Optional[MoogleJobRecipe | JobRecipe]
 
     _locations: ClassVar[dict[str, InventoryLocation]] = {
         "armory": InventoryLocation.ARMORY,
@@ -217,7 +205,6 @@ class InventoryItem(MoogleItem):
     }
 
     def __init__(self, data: ItemData, atools_data: AllaganToolsData, **kwargs: Unpack[ObjectParams]) -> None:
-        # def __init__(self, atools_data: AllaganToolsInventoryCSV, **kwargs: Unpack[ObjectParams]) -> None:
         """Build your InventoryItem object.
 
         Parameters
@@ -261,8 +248,8 @@ class InventoryItem(MoogleItem):
             else:
                 setattr(self, key, value)
 
-        if self._recipe is not None:
-            self._recipe = self._get_item_job_recipes(self.id)
+        if self._jobrecipes is not None:
+            self._jobrecipes = self._get_item_job_recipes(self.id)
 
     def __eq__(self, other: object) -> bool:  # noqa: D105
         return super().__eq__(other=other)
@@ -288,7 +275,7 @@ class InventoryItem(MoogleItem):
         new_data["source"] = self.source
         new_data["type"] = self.quality
         new = InventoryItem(self._raw, atools_data=new_data, moogle=self._moogle) # pyright: ignore[reportArgumentType] # I am unsure how to narrow the scope of the `self._raw` for an Item.
-        new._external = self._external
+        new._external = self.external
         return new
 
 
@@ -321,6 +308,14 @@ class InventoryItem(MoogleItem):
         ----------
         obj: :class:`MoogleItem`
             An existing Moogle Item object to be converted.
+        **data: :class:`Unpack[AllaganToolsData]`, optional
+            All keys in :class:`AllaganToolsData` are optional, default values will be filled in.
+            ```
+            "inventory_location" = "NULL"
+            "total_quantity_available" = 1
+            "source" = "UNK"
+            "type" = "NQ"
+            ```
 
         Returns
         -------
@@ -339,7 +334,7 @@ class InventoryItem(MoogleItem):
         return new
 
     @property
-    def recipe(self) -> Optional[JobRecipe]:
+    def jobrecipes(self) -> Optional[JobRecipe]:
         """Any recipe information stored in seperately attached attributes related to the :class:`Item`, if applicable.
 
         Returns
@@ -348,11 +343,25 @@ class InventoryItem(MoogleItem):
             Returns any related recipe information as an object representing the data from the recipe.json.
 
         """
-        if type(self._recipe) is MoogleJobRecipe:
-            return JobRecipe.from_obj(self._recipe)
-        if type(self._recipe) is JobRecipe:
-            return self._recipe
+        if type(self._jobrecipes) is MoogleJobRecipe:
+            return JobRecipe.from_obj(self._jobrecipes)
+        if type(self._jobrecipes) is JobRecipe:
+            return self._jobrecipes
         return None
+
+    @property
+    def recipe(self) -> Optional[Recipe]:
+        """The first job specific recipe, if applicable.
+
+        Returns
+        -------
+        :class:`Optional[Recipe]`
+            A representation of a Final Fantasy 14 Recipe.
+
+        """
+        if self._jobrecipes is not None:
+            return Recipe.from_obj(self._jobrecipes[0])
+        return self._jobrecipes
 
     def _get_item_job_recipes(self, item_id: int) -> JobRecipe | None:
         LOGGER.debug(
@@ -373,15 +382,33 @@ class InventoryItem(MoogleItem):
 class JobRecipe(MoogleJobRecipe):
     _item: MoogleItem | InventoryItem
     CRP: Optional[MoogleRecipe | Recipe]
+    "Carpenter related Job Recipe, if applicable."
     BSM: Optional[MoogleRecipe | Recipe]
+    "Blacksmith related Job Recipe, if applicable."
     ARM: Optional[MoogleRecipe | Recipe]
+    "Armorsmith related Job Recipe, if applicable."
     GSM: Optional[MoogleRecipe | Recipe]
+    "Goldsmith related Job Recipe, if applicable."
     LTW: Optional[MoogleRecipe | Recipe]
+    "Leatherworker related Job Recipe, if applicable."
     WVR: Optional[MoogleRecipe | Recipe]
+    "Weaver related Job Recipe, if applicable."
     ALC: Optional[MoogleRecipe | Recipe]
+    "Alchemist related Job Recipe, if applicable."
     CUL: Optional[MoogleRecipe | Recipe]
+    "Culinarian related Job Recipe, if applicable."
 
     def __init__(self, data: RecipeLookUpData, item: InventoryItem, **kwargs: Unpack[ObjectParams]) -> None:
+        """Build your :class:`JobRecipe` obj.
+
+        Parameters
+        ----------
+        data: :class:`RecipeLookUpData`
+            _description_.
+        item: :class:`InventoryItem`
+            _description_.
+
+        """
         super().__init__(data=data, item=item, **kwargs)
 
         # This ensure consistency when accessing attributes.
@@ -482,28 +509,28 @@ class Recipe(MoogleRecipe):
     """An extension of :class:`MoogleRecipe` for Allagan Tools interactions and functionality.
 
     .. note::
-    Has functionality to calculate item quanity based upon provided Inventory information.
+        Has functionality to calculate item quanity based upon provided Inventory information, see `inventory_crafting()`
 
     """
 
     item_result: MoogleItem | InventoryItem
     amount_result: int
 
-    item_ingredient0: Optional[MoogleItem | InventoryItem | int]
+    ingredient0: Optional[MoogleItem | InventoryItem | int]
     amount_ingredient0: Optional[int]
-    item_ingredient1: Optional[MoogleItem | InventoryItem | int]
+    ingredient1: Optional[MoogleItem | InventoryItem | int]
     amount_ingredient1: Optional[int]
-    item_ingredient2: Optional[MoogleItem | InventoryItem | int]
+    ingredient2: Optional[MoogleItem | InventoryItem | int]
     amount_ingredient2: Optional[int]
-    item_ingredient3: Optional[MoogleItem | InventoryItem | int]
+    ingredient3: Optional[MoogleItem | InventoryItem | int]
     amount_ingredient3: Optional[int]
-    item_ingredient4: Optional[MoogleItem | InventoryItem | int]
+    ingredient4: Optional[MoogleItem | InventoryItem | int]
     amount_ingredient4: Optional[int]
-    item_ingredient5: Optional[MoogleItem | InventoryItem | int]
+    ingredient5: Optional[MoogleItem | InventoryItem | int]
     amount_ingredient5: Optional[int]
-    item_ingredient6: Optional[MoogleItem | InventoryItem | int]
+    ingredient6: Optional[MoogleItem | InventoryItem | int]
     amount_ingredient6: Optional[int]
-    item_ingredient7: Optional[MoogleItem | InventoryItem | int]
+    ingredient7: Optional[MoogleItem | InventoryItem | int]
     amount_ingredient7: Optional[int]
 
     def __init__(self, recipe_id: str, data: RecipeData, item: InventoryItem, **kwargs: Unpack[ObjectParams]) -> None:
@@ -528,7 +555,7 @@ class Recipe(MoogleRecipe):
 
         self.item_result = item
         # This all relies on the above `super()` call.
-        ikeys = [f"item_ingredient{idx}" for idx in range(8)]
+        ikeys = [f"ingredient{idx}" for idx in range(8)]
         for idx, entry in enumerate(ikeys):
             value: int | MoogleItem | None = getattr(self, entry)
             if isinstance(value, MoogleItem):
@@ -542,7 +569,7 @@ class Recipe(MoogleRecipe):
         _iter = 0
         while _iter < 8:
             try:
-                ingredient: Optional[InventoryItem] = getattr(self, f"item_ingredient{_iter}")
+                ingredient: Optional[InventoryItem] = getattr(self, f"ingredient{_iter}")
                 # count: Optional[int] = getattr(self, f"amount_ingredient{_iter}")
                 if isinstance(ingredient, int) or (ingredient is None):
                     _iter += 1
@@ -579,14 +606,14 @@ class Recipe(MoogleRecipe):
         """The cummilative total of every ingredient and it's quantity."""
         val = 0
         for item in self:
-            if item.recipe is not None:
-                val += item.recipe[0].total_ingredient_quantity
+            if item.jobrecipes is not None:
+                val += item.jobrecipes[0].total_ingredient_quantity
                 continue
             val += item.quantity
         return val
 
 
-    async def inventory_crafting(self, count: int = 1, **data: Unpack[RecipeCrafting]) -> RecipeCrafting:
+    def inventory_crafting(self, count: int = 1, **data: Unpack[RecipeCrafting]) -> RecipeCrafting:
         """Calculates the missing and used "Items" based upon the supplied Inventory array.
 
         Which can be used to calculate crafting cost, missing number of items vs completion or other stats.
@@ -597,12 +624,13 @@ class Recipe(MoogleRecipe):
         Parameters
         ----------
         count: :class:`int`, optional
-            _description_, by default 1.
+            The number of said item you wish to craft, by default 1.
 
         Returns
         -------
         :class:`RecipeCrafting`
-            _description_.
+            A dictionary with relevant crafting data seperated by the keys "used", "missing" and
+            "inventory" which each house an array of :class:`InventoryItem`s.
 
         """
         i_item: InventoryItem
@@ -652,8 +680,8 @@ class Recipe(MoogleRecipe):
                 else:
                     used[used.index(recipe_item)].quantity += offset
             else:
-                if recipe_item.recipe is not None:
-                    res = await next(iter(recipe_item.recipe)).inventory_crafting(count=count, **res)
+                if recipe_item.jobrecipes is not None:
+                    res = next(iter(recipe_item.jobrecipes)).inventory_crafting(count=count, **res)
                 else:
                     # We only want to add "non" recipe items because we know they
                     # don't have the Recipe item from above and we are deducting the ingredients of the recipe from their inventory.

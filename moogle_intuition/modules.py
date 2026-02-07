@@ -3667,6 +3667,18 @@ class Fishing(Fish):
             self._fishing_spots = None
         return self._fishing_spots
 
+    @property
+    def garlandtools_url(self) -> str:
+        """The GarlandTools URL related to the Fishing Spot.
+
+        Returns
+        -------
+        :class:`str`
+            A URL string.
+
+        """
+        return f"https://www.garlandtools.org/db/#fishing/{self.fishing_spot_id}"
+
     def __iter__(self) -> Iterator[FishingSpot]:
         """Yields a :class:`FishingSpot` object for the :class:`Fishing` object from `self.fishing_spots`."""
         _iter = 0
@@ -3730,6 +3742,9 @@ class SpearFishing(Fish):
         "territory_type",
     )
 
+
+
+
     def __init__(self, data: SpearFishingItemData, item: Item, angler: Angler, moogle: Moogle) -> None:
         """Build your :class:`SpearFishing` object.
 
@@ -3760,6 +3775,7 @@ class SpearFishing(Fish):
                     # except MoogleLookupError:
                     #     LOGGER.warning("<%s> | Failed to find item. | item: %s", __class__.__name__, value)
                     #     self.item = value
+
                 elif key.lower() == "territory_type" and value != 0:
                     try:
                         self.territory_type = self._get_spearfishing_spot(record_type=value)

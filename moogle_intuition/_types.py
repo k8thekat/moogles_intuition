@@ -496,7 +496,7 @@ class FishingSpotData(TypedDict):
 
 
 class PlaceNameData(TypedDict):
-    id: int
+    id: int #Absolutely useless, it's an index value for relationship purposes to other tables.
     name: str
     name_no_article: str
 
@@ -510,7 +510,7 @@ class GetItemParams(TypedDict, total=False):
 
 
 class SpearFishingItemData(TypedDict):
-    id: int
+    id: int #Absolutely useless, it's an index value for relationship purposes to other tables.
     description: str
     item: int
     gathering_item_level: int
@@ -520,7 +520,7 @@ class SpearFishingItemData(TypedDict):
 
 
 class SpearFishingNotebookData(TypedDict):
-    id: int
+    id: int #Absolutely useless, it's an index value for relationship purposes to other tables.
     gathering_level: int
     is_shadow_node: bool
     territory_type: int

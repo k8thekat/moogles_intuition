@@ -1915,9 +1915,9 @@ class Moogle(Generic):
         for item in items:
             for entry in data.items:
                 if isinstance(entry, CurrentData) and entry.item_id == item.id:
-                    item._mb_current = entry
+                    item.external.mb_current = entry
                 elif isinstance(entry, HistoryData) and entry.item_id == item.id:
-                    item._mb_history = entry
+                    item.external.mb_history = entry
 
         return results
 
@@ -2350,10 +2350,6 @@ class Item(Object):
     "Local parsed GarlandToolsData vendors information if applicable."
     _tradeshops: Optional[list[Vendor]]
     "Local parsed GarlandToolsData tradeshops information if applicable."
-
-
-    _mb_current: Optional[CurrentData]
-    _mb_history: Optional[HistoryData]
 
 
     id: int

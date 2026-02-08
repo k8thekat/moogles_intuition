@@ -20,6 +20,7 @@ Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple, Optional, overload
 
@@ -28,7 +29,7 @@ import bs4
 from bs4.element import AttributeValueList, NavigableString
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import AsyncGenerator, Iterator
     from types import TracebackType
     from typing import Self
 
@@ -44,7 +45,7 @@ if TYPE_CHECKING:
 
 __all__ = ("Angler", "AnglerBaits", "AnglerFish")
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 
 class VersionInfo(NamedTuple):
@@ -59,6 +60,7 @@ version_info: VersionInfo = VersionInfo(major=1, minor=0, revision=2, release_le
 
 LOGGER: logging.Logger = logging.getLogger(__name__)
 # "https://en.ff14angler.com/?spot={spot_id}&fish={fish_id}&bait={bait_id}&cmd=search"
+
 
 class PartialAngler:
     _repr_keys: list[str]
@@ -106,6 +108,19 @@ class Angler(PartialAngler):
     session: Optional[aiohttp.ClientSession]
     _session: Optional[aiohttp.ClientSession]
     area_mapping: Optional[dict[str, dict[str, int]]]
+    _fish_map: Optional[dict[str, int]]
+
+    @property
+    def fish_map(self) -> Optional[dict[str, int]]:
+        """An array of "Fish Name: Fish ID" key, value pairs associated to FF14Angler website.
+
+        Returns
+        -------
+        :class:`Optional[dict[str, int]]`
+            A dictionary of `fish_name: fish_id`..
+
+        """
+        return self._fish_map
 
     def __init__(self, session: Optional[aiohttp.ClientSession] = None) -> None:
         """Build our :class:`Angler` object.
@@ -119,6 +134,7 @@ class Angler(PartialAngler):
         self.session = session
         self._session = None
         self.area_mapping = None
+        self._fish_map = None
 
     async def __aenter__(self, session: Optional[aiohttp.ClientSession] = None) -> Self:  # noqa: D105
         self.__init__(session=session)
@@ -163,6 +179,41 @@ class Angler(PartialAngler):
             )
             return None
         return await res.content.read()
+
+
+    async def parse_enff14angler_locations(
+        self, *, batch_size: int = 5, delay: float = 60,
+    ) -> AsyncGenerator[dict[int, FishingData] | None]:
+        """Parse every location from the en.ff14angler.com website.
+
+        Parameters
+        ----------
+        batch_size: :class:`int`, optional
+            How many location IDs to parse each cycle, by default 5.
+        delay: :class:`float`, optional
+            How many seconds to delay between cycles, by default 60.
+
+
+        Yields
+        ------
+        :class:`Iterator[AsyncGenerator[dict[int, FishingData] | None]]`
+            An entry of the array containing FishData by ID.
+
+        """
+        loc_map = await self.get_location_id_mapping()
+        if loc_map is None:
+            LOGGER.error("<%s.%s> | Failed to get Location ID mapping.", __class__.__name__, "parse_enff14angler")
+            return
+
+        count = 0
+        for loc_id in loc_map.values():
+            res: dict[int, FishingData] | None = await self.get_location_fish_data(loc_id, None)
+            if res is not None:
+                yield res
+            count += 1
+            if count == batch_size:
+                await asyncio.sleep(delay)
+                count = 0
 
     async def get_fish_locations(self, fish_id: int) -> Optional[list[int]]:
         """Retrieves the data related to the `fish_id` parameters fishing spots on FF14 Angler website.
@@ -239,7 +290,7 @@ class Angler(PartialAngler):
 
         Returns
         -------
-        Optional[:class:`dict[str, int]`]
+        :class:`Optional[dict[str, int]]`
             A dictionary of `fish_name: fish_id`.
 
         """
@@ -331,6 +382,7 @@ class Angler(PartialAngler):
         except IndexError:
             LOGGER.exception("<%s.get_fish_data> had an <IndexError> for `poss_fish`.", __class__.__name__)
             return None
+
         avail_fish: list[CustomTag] = list(poss_fish.children)
 
         flag = False
@@ -428,7 +480,11 @@ class Angler(PartialAngler):
                 cur_fish_tug = None if tug_section is None or tug_section.string is None else tug_section.string.strip()
 
             except IndexError:
-                LOGGER.warning("<%s.get_fish_data> had an <IndexError> for `possible_tug_data`", __class__.__name__)
+                LOGGER.warning(
+                    "<%s.get_fish_data> had an <IndexError> for `possible_tug_data` | Fish: %s ",
+                    __class__.__name__,
+                    cur_fish_name,
+                )
 
             # Index check
             # Checking Fish Double Hook information in a new section.
@@ -440,20 +496,23 @@ class Angler(PartialAngler):
                 else:
                     cur_fish_double = 0
             except IndexError:
-                LOGGER.warning("<%s.get_fish_data> had an <IndexError> for `cur_fish_double_data`", __class__.__name__)
-
+                LOGGER.warning(
+                    "<%s.get_fish_data> had an <IndexError> for `cur_fish_double_data` | Fish: %s",
+                    __class__.__name__,
+                    cur_fish_name,
+                )
             fishing_data[cur_fish_id] = {
                 "fish_name": cur_fish_name,
                 "restrictions": restriction_list,
                 "hook_time": cur_fish_tug,
                 "double_fish": cur_fish_double,
+                "location": self.resolve_area_from_loc_id(location_id),
                 "baits": {},
             }
-
+        # This is the "Fishing" subsection of the website with the Bait on the Y axis and the fish on the X axis.
         effective_bait_header: Optional[CustomTag] = soup.find(id="effective_bait")
         if effective_bait_header is not None:
             effective_bait: list[CustomTag] = list(effective_bait_header.children)
-
             # get the bait IDs and insert them into the data set
             # We will be using this list layout as our index into `fishing_data`.
             fish_ids: list[int] = []
@@ -466,10 +525,14 @@ class Angler(PartialAngler):
 
             # all entries have a blank gap, we also skip the first box as
             # it is empty due to the grid design
+            # This list is limited by the X axis of the table in "Fishing"
+            # which does not grab the "Mooch" information at the end of the Y column.
             fish_entries: list[CustomTag] = list(poss_entries.children)
             # This is used for `fish_id` to break early with the exact data.
             fish_index = -1
+            # Example: ...<a class="clear_icon" href="/bait/1073" title="metal spinner">...
             for index in range(3, len(fish_entries), 2):
+
                 cur_fish_entry: Optional[CustomTag] = fish_entries[index].find("a")
                 # poss_fish_name: Optional[_AttributeValue] = cur_fish_entry.get("title")
                 if cur_fish_entry is None:
@@ -494,22 +557,36 @@ class Angler(PartialAngler):
                     continue
 
                 bait_info: Optional[CustomTag] = bait_info_page.find("a")
+                mooch_info: Optional[CustomTag] = bait_info_page.find("span")
+
+                bait_id: int | None = None
                 if bait_info is None:
-                    continue
+                    if mooch_info is not None:
+                        bait_info = mooch_info
+                        bait_name: Optional[bs4AttributeValue] = bait_info.get("title", None)
+                        if isinstance(bait_name, str):
+                            bait_id = await self.resolve_fish_name_to_id(bait_name)
 
-                poss_id: Optional[bs4AttributeValue] = bait_info.get("href", None)
-                if isinstance(poss_id, str):
-                    bait_id = int(poss_id.split("/")[-1])
+                    # No bait or mooch info...
+                    else:
+                        continue
                 else:
-                    LOGGER.warning(
-                        "<%s.get_fish_data> encountered a <TypeError>, `poss_id`. | Type: %s ",
-                        __class__.__name__,
-                        type(poss_id),
-                    )
+                    poss_id: Optional[bs4AttributeValue] = bait_info.get("href", None)
+                    if isinstance(poss_id, str):
+                        bait_id = int(poss_id.split("/")[-1])
+                    else:
+                        LOGGER.warning(
+                            "<%s.get_fish_data> encountered a <TypeError>, `poss_id`. | Type: %s ",
+                            __class__.__name__,
+                            type(poss_id),
+                        )
+                        continue
+                    bait_name: Optional[bs4AttributeValue] = bait_info.get("title", None)
+
+                if bait_name is None or isinstance(bait_name, AttributeValueList):
                     continue
 
-                bait_name: Optional[bs4AttributeValue] = bait_info.get("title", None)
-                if bait_name is None or isinstance(bait_name, AttributeValueList):
+                if bait_id is None:
                     continue
 
                 if fish_id is not None and fish_index != -1:
@@ -706,6 +783,31 @@ class Angler(PartialAngler):
                     return {area_name: {name: loc_id}}
 
         return None
+
+    async def resolve_fish_name_to_id(self, fish_name: str) -> Optional[int]:
+        """Convert a Fish Name into a FF14Angler ID value.
+
+        .. note::
+            The ID value from this function is unique to `en.ff14angler.com`.
+
+
+        Parameters
+        ----------
+        fish_name: :class:`str`
+            The name of the fish to lookup.
+
+        Returns
+        -------
+        :class:`Optional[int]`
+            The fish ID, if applicable.
+
+        """
+        if self.fish_map is not None:
+            return self.fish_map.get(fish_name, None)
+        self._fish_map = await self.get_fish_id_mapping()
+        if self._fish_map is None:
+            return None
+        return self._fish_map.get(fish_name, None)
 
 
 class AnglerSoup(bs4.BeautifulSoup):

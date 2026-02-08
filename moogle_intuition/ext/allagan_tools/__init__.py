@@ -601,17 +601,6 @@ class Recipe(MoogleRecipe):
         new: Recipe = Recipe(recipe_id=str(obj.id), data=obj._raw, item=InventoryItem.from_obj(obj.item_result), moogle=obj._moogle)  # pyright: ignore[reportArgumentType] # We know the type of the data due to the obj being passed in.
         return new
 
-    @property
-    def total_ingredient_quantity(self) -> int:
-        """The cummilative total of every ingredient and it's quantity."""
-        val = 0
-        for item in self:
-            if item.jobrecipes is not None:
-                val += item.jobrecipes[0].total_ingredient_quantity
-                continue
-            val += item.quantity
-        return val
-
 
     def inventory_crafting(self, count: int = 1, **data: Unpack[RecipeCrafting]) -> RecipeCrafting:
         """Calculates the missing and used "Items" based upon the supplied Inventory array.

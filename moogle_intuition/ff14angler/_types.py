@@ -20,7 +20,7 @@ Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA
 
 from __future__ import annotations
 
-from typing import Optional, TypedDict
+from typing import NotRequired, Optional, TypedDict
 
 
 class Baits(TypedDict):
@@ -34,3 +34,5 @@ class FishingData(TypedDict):
     hook_time: Optional[str]
     double_fish: int
     baits: dict[int, Baits]
+    location: NotRequired[dict[str, dict[str, int]] | None]
+

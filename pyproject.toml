@@ -38,6 +38,7 @@ line-length = 140
 select = ["ALL"]
 ignore = [
     "ANN401",
+    "ASYNC240", # Because Umbra said "f anyio~"
     "C901", # Too complex functions.
     "D401", # Ignore "Imperative Mood" statement for docstrings.
     "ERA001", #Ignore commented out code.

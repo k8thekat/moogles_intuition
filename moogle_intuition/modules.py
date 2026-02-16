@@ -24,8 +24,8 @@ import base64
 import csv
 import json
 import logging
+import pathlib
 import statistics
-from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -53,7 +53,7 @@ from thefuzz import fuzz  # type: ignore[reportMissingStubFile]
 
 from moogle_intuition._types import CurrencySpender, ShoppingItem, Vendor
 from moogle_intuition.errors import MoogleLookupError
-from moogle_intuition.ff14angler._types import FishingData
+from moogle_intuition.ff14angler._types import FishingDataPartial
 
 from ._enums import CraftType, Currency, EquipSlotCategory, Expansion, FishingSpotCategory, ItemUICategory
 from ._types import ItemData
@@ -68,7 +68,7 @@ if TYPE_CHECKING:
     from async_garlandtools._types import IDCount, Item as GTItem, ItemResponse, Node, NodeResponse, PartialTypeIDObj, TradeShops
     from async_universalis import CurrentDataEntries, HistoryDataEntries
 
-    from moogle_intuition.ff14angler._types import FishingData
+    from moogle_intuition.ff14angler._types import FishingDataPartial
 
     D = TypeVar("D", bound="Moogle")
     T = ParamSpec("T")
@@ -131,7 +131,7 @@ __all__ = (
 )
 
 LOGGER = logging.getLogger(__name__)
-DATA_PATH: Path = Path(__file__).parent.joinpath("xiv_datamining")
+DATA_PATH: pathlib.Path = pathlib.Path(__file__).parent.joinpath("xiv_datamining")
 
 
 PRE_FORMATTED_KEYS: dict[str, str] = {
@@ -501,7 +501,7 @@ class Generic:
             return None
 
         for entry in items:
-            value = struct.get(entry.id, None)
+            value = struct.get(entry.id)
             if value is None:
                 struct[entry.id] = {"count": 1, "item": entry}
             else:
@@ -579,7 +579,7 @@ class Builder(Generic):
 
     def csv_parse(
         self,
-        path: Path,
+        path: pathlib.Path,
         *,
         convert_pound: bool = True,
         format_keys: bool = True,
@@ -661,7 +661,7 @@ class Builder(Generic):
 
     def csv_parse_v2(
         self,
-        path: Path,
+        path: pathlib.Path,
         *,
         convert_pound: bool = True,
         format_keys: bool = True,
@@ -762,6 +762,9 @@ class Builder(Generic):
             - If the `.csv` files are no longer present, it will get the csv file, save it and parse that.
             - This assumes the csv file is located in `DATA_PATH`.
 
+        .. warning::
+            If the URL is invalid; this function will become blocking asking for an `input`.
+
 
         Parameters
         ----------
@@ -808,7 +811,7 @@ class Builder(Generic):
             url_key = csv_name.split(".", maxsplit=1)[0]
             key_data: tuple[bool, str] | None = URLS.get(url_key)
             if key_data is None:
-                url: str = input(f"Please provide a url for {csv_name}")
+                url: str = input(f"Please provide a url for {csv_name}")  # noqa: ASYNC250
             else:
                 url = key_data[1]
 
@@ -834,7 +837,8 @@ class Builder(Generic):
         LOGGER.info("<%s.%s> | Validating json files... | Path: %s", __class__.__name__, "file_validation", DATA_PATH)
         for key, data in URLS.items():
             # lets check for the json file, which is all we care about to build our data structures.
-            f_path: Path = Path(DATA_PATH).joinpath(key + ".json")
+            # f_path: Path = Path(DATA_PATH).joinpath(key + ".json")
+            f_path: pathlib.Path = pathlib.Path(DATA_PATH).joinpath(key + ".json")
             LOGGER.debug(
                 "<%s.%s> | Validating file... %s. | Exists: %s | Path: %s",
                 __class__.__name__,
@@ -888,7 +892,8 @@ class Builder(Generic):
             An array of strings that if the `key_name` is in the array it will be ignored and instantly returned unformatted.
             - You may provide your own, or use the constant `IGNORED_KEYS`
         pre_formatted_keys: :class:`Optional[dict[str, str]]`, optional
-            An dictionary with keys consisting of values to compare against and the value of the keys to be the replacement string.
+            An dictionary with keys consisting of values to compare against and the value of the keys to be the replacement
+            string if special formatting is required for the `key_name`.
             - You may provide your own, or use the constant `PRE_FORMATTED_KEYS`
 
         Returns
@@ -960,7 +965,7 @@ class Builder(Generic):
             msg = "<%s.%s> | Failed to find existing JSON directory. | Path: %s"
             raise FileNotFoundError(msg, __class__.__name__, "_rebuild_files", DATA_PATH)
 
-        old_cache: Path = Path(__file__).parent.joinpath("xiv_datamining_old")
+        old_cache: pathlib.Path = pathlib.Path(__file__).parent.joinpath("xiv_datamining_old")
         # Removing old files.
         if old_cache.exists() is True:
             for file in old_cache.iterdir():
@@ -1316,7 +1321,7 @@ class Builder(Generic):
         self,
         file_name: str,
         data: bytes | dict[Any, Any] | str,
-        path: Path = Path(__file__).parent,
+        path: pathlib.Path = pathlib.Path(__file__).parent,
         *,
         mode: str = "w+",
         **kwargs: Any,
@@ -1353,7 +1358,7 @@ class Builder(Generic):
             path.joinpath(file_name).as_posix(),
         )
 
-    def _load_json(self, path: Path, **json_args: Any) -> dict[str, DataTypeAliases]:
+    def _load_json(self, path: pathlib.Path, **json_args: Any) -> dict[str, DataTypeAliases]:
         if path.exists() is False:
             msg = "<%s.%s> | The Path provided does not exist. | Path: %s"
             raise FileNotFoundError(msg, __class__.__name__, "_load_json", path)
@@ -1521,7 +1526,7 @@ class Moogle(Generic):
             if isinstance(session, CachedSession):
                 self._garlandtools = GarlandToolsAsync(session=session)
             else:
-                self._garlandtools = GarlandToolsAsync(cache_location=Path(__file__).parent)
+                self._garlandtools = GarlandToolsAsync(cache_location=pathlib.Path(__file__).parent)
                 # This forces us to swap to a CachedSession object for all other usage.
                 session = self._garlandtools.session
         else:
@@ -2351,7 +2356,6 @@ class Item(Object):
     _tradeshops: Optional[list[Vendor]]
     "Local parsed GarlandToolsData tradeshops information if applicable."
 
-
     id: int
     icon: int
     "Icon ID, can be used in place for :class:`GarlandToolsAsync.icon()`"
@@ -2776,7 +2780,13 @@ class Item(Object):
             return None
         return self.garlandtools_data
 
-    async def get_icon(self, *, icon_type: IconType = IconType.item) -> Optional[GTObject]:
+    async def get_icon(
+        self,
+        *,
+        icon_type: IconType = IconType.item,
+        thumbnail: bool = True,
+        content_only: bool = True,
+    ) -> Optional[GTObject]:
         """Fetches GarlandTools Icon data, if applicable.
 
         Parameters
@@ -2784,6 +2794,12 @@ class Item(Object):
         icon_type: :class:`IconType`
             The "type" or "category" of icon the `icon_id` belongs to,
             such as an item having it's category be `IconType.item`; default is `IconType.item`.
+        thumbnail: :class:`bool`, optional
+            If you want a lower resolution icon image, by default is `True`
+            - Not all Icons have a high resolution image, so having this on by default guarantees a result(typically).
+        content_only: :class:`bool`, optional
+            A flag that causes our `self._request` function to only return raw `bytes`
+            data instead of JSON or similar, by default is `True`.
 
         Returns
         -------
@@ -2796,7 +2812,12 @@ class Item(Object):
             return self.icon_data
 
         try:
-            res: GTObject = await self._moogle._garlandtools.icon(icon_id=self.icon, icon_type=icon_type)
+            res: GTObject = await self._moogle._garlandtools.icon(
+                icon_id=self.icon,
+                icon_type=icon_type,
+                thumbnail=thumbnail,
+                content_only=content_only,
+            )
             self.external.icon_data = res
         except (GarlandToolsKeyError, GarlandToolsRequestError):
             LOGGER.warning("<%s.%s> | Failed to get GarlandTools Icon data. | Item: %s", __class__.__name__, "get_icon", self.id)
@@ -3344,7 +3365,7 @@ class Recipe(Object):
             if isinstance(item, int):
                 continue
 
-            if results.get(item.id, None) is None:
+            if results.get(item.id) is None:
                 results[item.id] = {"item": item, "count": ingredient[1] * count}
             else:
                 results[item.id]["count"] += ingredient[1] * count
@@ -3483,12 +3504,12 @@ class Fish(Object):
         if self.angler_data is not None:
             return self.angler_data
 
-        fish_id: Optional[int] = self._moogle._angler_fish_map.get(self.name, None)
-        if fish_id is None:
-            LOGGER.debug("<%s.%s> | Fish ID: %s", __class__.__name__, "get_angler_data", fish_id)
+        # fish_id: Optional[int] = self._moogle._angler_fish_map.get(self.name, None)
+        if self.angler_id is None:
+            LOGGER.debug("<%s.%s> | Fish ID: %s", __class__.__name__, "get_angler_data", self.angler_id)
             return None
 
-        fish_locs: Optional[list[int]] = await self._angler.get_fish_locations(fish_id=fish_id)
+        fish_locs: Optional[list[int]] = await self._angler.get_fish_locations(fish_id=self.angler_id)
         if fish_locs is None:
             LOGGER.debug("<%s.%s> | Fish Locs: %s", __class__.__name__, "get_angler_data", fish_locs)
             return None
@@ -3498,7 +3519,9 @@ class Fish(Object):
         best: Optional[AnglerFish] = None
         LOGGER.debug("Checking Best Chance: %s | Type: %s | Entries: %s", best_chance, type(self), len(data))
         for entry in fish_locs:
-            res: Optional[FishingData] = await self._angler.get_location_fish_data(location_id=entry, fish_id=fish_id)
+            res: Optional[FishingDataPartial | dict[int, FishingDataPartial]] = await self._angler.get_location_fish_data(
+                location_id=entry, fish_id=self.angler_id,
+            )
             if res is None:
                 continue
 
@@ -3509,7 +3532,7 @@ class Fish(Object):
             if self._moogle._angler.area_mapping is not None:
                 spot = self._angler.resolve_area_from_loc_id(location_id=entry)
 
-            fish = AnglerFish(item_id=fish_id, data=res, spot=spot)
+            fish = AnglerFish(item_id=self.angler_id, data=res, spot=spot)
 
             data.append(fish)
 
@@ -3741,9 +3764,6 @@ class SpearFishing(Fish):
         "item",
         "territory_type",
     )
-
-
-
 
     def __init__(self, data: SpearFishingItemData, item: Item, angler: Angler, moogle: Moogle) -> None:
         """Build your :class:`SpearFishing` object.

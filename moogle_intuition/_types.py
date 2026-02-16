@@ -507,8 +507,6 @@ class GetItemParams(TypedDict, total=False):
 
 
 
-
-
 class SpearFishingItemData(TypedDict):
     id: int #Absolutely useless, it's an index value for relationship purposes to other tables.
     description: str

@@ -5,13 +5,15 @@ The current issues and TODOs for `Moogle Intuition`.
 - Perform a Unit Test.
 
 ## Features:
-Additional features and or integration with other platforms.
+- Raw/Base ingredient breakdown of a Recipe.
+- Add full Currency parsing to build Enums.
 
 - Support Company/FC Workshop Items?
 -- CompanyCraftSequence.csv has part fields -> CompanyCraftPart.csv has process fields -> CompanyCraftProcess.csv that has the actual item and quantity values
 
 
 ## MakePlace
+- Finish integration
 
 
 ## GarlandTools Parsing
